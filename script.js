@@ -3,6 +3,8 @@ let collateralAmount                = 100;
 let LTV                       = 0.90;
 let COLLATERAL_REBALANCE_THRESHOLD  = 0.05;
 let ERC_REBALANCE_THRESHOLD   = 0.05;
+let collateralSwapFee         = 0.00;  // fee when selling ERC shares → collateral
+let ercSwapFee                = 0.00;  // fee when buying ERC shares with yield tokens
 const BASE_PRICE              = 1.00;
 let CHART_MAX       = 200;  // bar chart x-axis max in $ — doubles as needed
 let yMax            = 2;    // shared price chart y-axis max
@@ -15,7 +17,7 @@ let sharePrice      = 1.00;       // ERC4626 share price (dynamic)
 let shareTrendPrice = 1.00;
 let yieldAssetPrice = 1.00;       // Yield asset price (display + income)
 let yieldTrendPrice = 1.00;
-let sharesCount     = yieldLoan / sharePrice;  // ERC shares = yield assets / sharePrice
+let sharesCount     = yieldLoan * (1 - ercSwapFee) / sharePrice;  // ERC shares after swap fee
 let playing    = false;
 let lastTs     = null;
 let rafId      = null;
@@ -50,7 +52,11 @@ function tryRebalanceCollateral() {
     if (Math.abs(dev) >= COLLATERAL_REBALANCE_THRESHOLD) {
         const yieldDiff = targetYield - yieldLoan;
         yieldLoan   = targetYield;
-        sharesCount += yieldDiff / sharePrice;
+        if (yieldDiff > 0) {
+            sharesCount += yieldDiff * (1 - ercSwapFee) / sharePrice;  // buying shares: pay yield→ERC fee
+        } else {
+            sharesCount += yieldDiff / sharePrice;  // selling shares to repay loan: no swap fee
+        }
         return 'collateral';
     }
     return false;
@@ -63,7 +69,7 @@ function tryRebalanceERC4626() {
     if (dev >= ERC_REBALANCE_THRESHOLD) {
         const excessYield = yieldHeld - yieldLoan;
         sharesCount = yieldLoan / sharePrice;
-        collateralAmount += excessYield * yieldAssetPrice / collateralPrice;
+        collateralAmount += excessYield * yieldAssetPrice * (1 - collateralSwapFee) / collateralPrice;
         return 'erc';
     }
     return false;
@@ -532,7 +538,7 @@ document.getElementById('btn-reset').addEventListener('click', () => {
     priceChart.options.scales.x.max  = WINDOW_YEARS;
     priceChart.update('none');
 
-    sharesCount = yieldLoan / sharePrice;
+    sharesCount = yieldLoan * (1 - ercSwapFee) / sharePrice;
     lastRecordedPos = posVal();
     collateralRebalanceYears = [];
     ercRebalanceYears  = [];
@@ -672,6 +678,23 @@ document.getElementById('sl-threshold-erc').addEventListener('input', e => {
     document.getElementById('val-threshold-erc').textContent = parseInt(e.target.value);
     updateERC4626ThresholdLines();
 });
+function feeFromSlider(v) {
+    // 0-99 → 0%-1%, 100 → 100%
+    return v >= 100 ? 1.0 : v / 99 * 0.01;
+}
+function feeLabel(v) {
+    return v >= 100 ? '100.0' : (v / 99 * 1).toFixed(2);
+}
+document.getElementById('sl-collateral-swap-fee').addEventListener('input', e => {
+    const v = parseFloat(e.target.value);
+    collateralSwapFee = feeFromSlider(v);
+    document.getElementById('val-collateral-swap-fee').textContent = feeLabel(v);
+});
+document.getElementById('sl-erc-swap-fee').addEventListener('input', e => {
+    const v = parseFloat(e.target.value);
+    ercSwapFee = feeFromSlider(v);
+    document.getElementById('val-erc-swap-fee').textContent = feeLabel(v);
+});
 
 // ── Slider labels ─────────────────────────────────────────────────────
 document.getElementById('sl-speed').addEventListener('input', e =>
@@ -742,9 +765,9 @@ updateThresholdLines();
 render(false);
 
 // ── Share link ────────────────────────────────────────────────────────
-const SHARE_SLIDERS  = ['sl-speed','sl-drift','sl-threshold-flow','sl-period','sl-velocity',
+const SHARE_SLIDERS  = ['sl-speed','sl-drift','sl-threshold-flow','sl-collateral-swap-fee','sl-period','sl-velocity',
                         'sl-yield-drift','sl-borrow-fee','sl-ltv','sl-yield-period','sl-yield-velocity',
-                        'sl-share-drift','sl-threshold-erc','sl-share-period','sl-share-velocity'];
+                        'sl-share-drift','sl-threshold-erc','sl-erc-swap-fee','sl-share-period','sl-share-velocity'];
 const SHARE_TOGGLES  = ['btn-flow-rebalance','btn-flow-vol','btn-yield-vol','btn-share-rebalance','btn-share-vol'];
 
 // Capture before updateUrl() can overwrite it

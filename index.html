@@ -112,9 +112,7 @@
         }
 
         input[type=range] {
-            width: 100%;
             accent-color: #5c9ab8;
-            cursor: pointer;
         }
 
         .param-group-label {
@@ -444,7 +442,7 @@
                 <span class="param-group-label" style="white-space:nowrap; padding-bottom:0; width:52px;">Collateral<br>Token</span>
                 <div class="param" style="flex:0 0 160px;">
                     <div class="param-label">Yearly Return &nbsp;<span id="val-drift">10</span>%</div>
-                    <input type="range" id="sl-drift" min="-10" max="30" step="1" value="10">
+                    <input type="range" id="sl-drift" min="-10" max="30" step="1" value="10" style="accent-color:#5cb85c;">
                 </div>
                 <div style="display:flex; flex-direction:column; gap:4px; flex:1;">
                     <div style="display:flex; align-items:center; gap:8px;">
@@ -453,16 +451,20 @@
                             <div class="param-label">Threshold &nbsp;<span id="val-threshold-flow">5</span>%</div>
                             <input type="range" id="sl-threshold-flow" min="1" max="20" step="1" value="5" style="accent-color:#5cb85c;">
                         </div>
+                        <div class="param" style="flex:1;">
+                            <div class="param-label">DEX Fee to ERC4625 &nbsp;<span id="val-collateral-swap-fee">0.0</span>%</div>
+                            <input type="range" id="sl-collateral-swap-fee" min="0" max="100" step="1" value="0" style="accent-color:#5cb85c;">
+                        </div>
                     </div>
                     <div style="display:flex; align-items:center; gap:8px;">
                         <button class="btn-toggle btn-toggle-flow" id="btn-flow-vol">Volatility</button>
                         <div class="param" id="flow-vol-period" style="flex:1;">
                             <div class="param-label">Period &nbsp;<span id="val-period">3.0</span></div>
-                            <input type="range" id="sl-period" min="0.5" max="5" step="0.1" value="3">
+                            <input type="range" id="sl-period" min="0.5" max="5" step="0.1" value="3" style="accent-color:#5cb85c;">
                         </div>
                         <div class="param" id="flow-vol-amplitude" style="flex:1;">
                             <div class="param-label">Ampl &nbsp;<span id="val-velocity">0.050</span></div>
-                            <input type="range" id="sl-velocity" min="0" max="0.5" step="0.005" value="0.05">
+                            <input type="range" id="sl-velocity" min="0" max="0.5" step="0.005" value="0.05" style="accent-color:#5cb85c;">
                         </div>
                     </div>
                 </div>
@@ -474,11 +476,11 @@
                 <div style="flex:0 0 160px; display:flex; flex-direction:column; gap:4px;">
                     <div class="param">
                         <div class="param-label">Yearly Return &nbsp;<span id="val-yield-drift">0</span>%</div>
-                        <input type="range" id="sl-yield-drift" min="-10" max="30" step="1" value="0">
+                        <input type="range" id="sl-yield-drift" min="-10" max="30" step="1" value="0" style="accent-color:#5c9ab8;">
                     </div>
                     <div class="param">
                         <div class="param-label">Borrow Fee &nbsp;<span id="val-borrow-fee">1</span>%/yr</div>
-                        <input type="range" id="sl-borrow-fee" min="0" max="10" step="1" value="1">
+                        <input type="range" id="sl-borrow-fee" min="0" max="10" step="1" value="1" style="accent-color:#5c9ab8;">
                     </div>
                 </div>
                 <div style="display:flex; flex-direction:column; gap:4px; flex:1;">
@@ -486,18 +488,22 @@
                         <span style="padding:5px 12px; font-size:9px; font-weight:700; letter-spacing:1px; visibility:hidden; flex-shrink:0;">Volatility</span>
                         <div class="param" id="yield-health-param" style="flex:1;">
                             <div class="param-label">Target Health &nbsp;<span id="val-ltv">90</span>%</div>
-                            <input type="range" id="sl-ltv" min="0.5" max="0.95" step="0.05" value="0.9">
+                            <input type="range" id="sl-ltv" min="0.5" max="0.95" step="0.05" value="0.9" style="accent-color:#5c9ab8;">
+                        </div>
+                        <div class="param" style="flex:1;">
+                            <div class="param-label">DEX Fee to ERC4625 &nbsp;<span id="val-erc-swap-fee">0.0</span>%</div>
+                            <input type="range" id="sl-erc-swap-fee" min="0" max="100" step="1" value="0" style="accent-color:#5c9ab8;">
                         </div>
                     </div>
                     <div style="display:flex; align-items:center; gap:8px;">
                         <button class="btn-toggle btn-toggle-yield" id="btn-yield-vol">Volatility</button>
                         <div class="param" id="yield-vol-period" style="flex:1;">
                             <div class="param-label">Period &nbsp;<span id="val-yield-period">3.0</span></div>
-                            <input type="range" id="sl-yield-period" min="0.5" max="5" step="0.1" value="3">
+                            <input type="range" id="sl-yield-period" min="0.5" max="5" step="0.1" value="3" style="accent-color:#5c9ab8;">
                         </div>
                         <div class="param" id="yield-vol-amplitude" style="flex:1;">
                             <div class="param-label">Ampl &nbsp;<span id="val-yield-velocity">0.000</span></div>
-                            <input type="range" id="sl-yield-velocity" min="0" max="0.5" step="0.005" value="0">
+                            <input type="range" id="sl-yield-velocity" min="0" max="0.5" step="0.005" value="0" style="accent-color:#5c9ab8;">
                         </div>
                     </div>
                 </div>
@@ -508,25 +514,25 @@
                 <span class="param-group-label" style="color:#9a6ab8; white-space:nowrap; padding-bottom:0; width:52px;">ERC-4626</span>
                 <div class="param" style="flex:0 0 160px;">
                     <div class="param-label">Yearly Return &nbsp;<span id="val-share-drift">10</span>%</div>
-                    <input type="range" id="sl-share-drift" min="-10" max="30" step="1" value="10">
+                    <input type="range" id="sl-share-drift" min="-10" max="30" step="1" value="10" style="accent-color:#5c9ab8;">
                 </div>
                 <div style="display:flex; flex-direction:column; gap:4px; flex:1;">
                     <div style="display:flex; align-items:center; gap:8px;">
                         <button class="btn-toggle btn-toggle-share active" id="btn-share-rebalance">Rebalancer</button>
                         <div class="param" id="erc-rebalance-thresh" style="flex:1;">
                             <div class="param-label">Threshold &nbsp;<span id="val-threshold-erc">5</span>%</div>
-                            <input type="range" id="sl-threshold-erc" min="1" max="20" step="1" value="5" style="accent-color:#9a6ab8;">
+                            <input type="range" id="sl-threshold-erc" min="1" max="20" step="1" value="5" style="accent-color:#5c9ab8;">
                         </div>
                     </div>
                     <div style="display:flex; align-items:center; gap:8px;">
                         <button class="btn-toggle btn-toggle-share" id="btn-share-vol">Volatility</button>
                         <div class="param" id="share-vol-period" style="flex:1;">
                             <div class="param-label">Period &nbsp;<span id="val-share-period">4.0</span></div>
-                            <input type="range" id="sl-share-period" min="0.5" max="5" step="0.1" value="4">
+                            <input type="range" id="sl-share-period" min="0.5" max="5" step="0.1" value="4" style="accent-color:#5c9ab8;">
                         </div>
                         <div class="param" id="share-vol-amplitude" style="flex:1;">
                             <div class="param-label">Ampl &nbsp;<span id="val-share-velocity">0.010</span></div>
-                            <input type="range" id="sl-share-velocity" min="0" max="0.5" step="0.005" value="0.01">
+                            <input type="range" id="sl-share-velocity" min="0" max="0.5" step="0.005" value="0.01" style="accent-color:#5c9ab8;">
                         </div>
                     </div>
                 </div>
