@@ -740,3 +740,59 @@ document.getElementById('pyusd-bar-text').textContent  = `${(sharesCount * share
 document.getElementById('shares-bar-text').textContent = `${sharesCount.toFixed(2)} shares\n${(sharesCount * sharePrice).toFixed(2)} yield token\n${usdS(sharesCount * effectiveSharePrice())}`;
 updateThresholdLines();
 render(false);
+
+// ── Share link ────────────────────────────────────────────────────────
+const SHARE_SLIDERS  = ['sl-speed','sl-drift','sl-threshold-flow','sl-period','sl-velocity',
+                        'sl-yield-drift','sl-borrow-fee','sl-ltv','sl-yield-period','sl-yield-velocity',
+                        'sl-share-drift','sl-threshold-erc','sl-share-period','sl-share-velocity'];
+const SHARE_TOGGLES  = ['btn-flow-rebalance','btn-flow-vol','btn-yield-vol','btn-share-rebalance','btn-share-vol'];
+
+// Capture before updateUrl() can overwrite it
+const INITIAL_PARAMS = new URLSearchParams(location.search);
+
+// Store HTML defaults before any params are applied
+const SLIDER_DEFAULTS = Object.fromEntries(SHARE_SLIDERS.map(id => [id, document.getElementById(id).value]));
+const TOGGLE_DEFAULTS = Object.fromEntries(SHARE_TOGGLES.map(id => [id, document.getElementById(id).classList.contains('active')]));
+
+document.getElementById('btn-reset-settings').addEventListener('click', () => {
+    SHARE_SLIDERS.forEach(id => {
+        const el = document.getElementById(id);
+        el.value = SLIDER_DEFAULTS[id];
+        el.dispatchEvent(new Event('input'));
+    });
+    SHARE_TOGGLES.forEach(id => {
+        const el = document.getElementById(id);
+        const want = TOGGLE_DEFAULTS[id];
+        if (el.classList.contains('active') !== want) el.click();
+    });
+    document.getElementById('btn-reset').click();
+});
+
+function updateUrl() {
+    const params = new URLSearchParams();
+    SHARE_SLIDERS.forEach(id => params.set(id, document.getElementById(id).value));
+    SHARE_TOGGLES.forEach(id => params.set(id, document.getElementById(id).classList.contains('active') ? '1' : '0'));
+    history.replaceState(null, '', `${location.pathname}?${params}`);
+}
+
+SHARE_SLIDERS.forEach(id => document.getElementById(id).addEventListener('input', updateUrl));
+SHARE_TOGGLES.forEach(id => document.getElementById(id).addEventListener('click', updateUrl));
+
+// Apply params from original URL, then sync URL to reflect applied state
+if (INITIAL_PARAMS.size) {
+    SHARE_SLIDERS.forEach(id => {
+        if (!INITIAL_PARAMS.has(id)) return;
+        const el = document.getElementById(id);
+        el.value = INITIAL_PARAMS.get(id);
+        el.dispatchEvent(new Event('input'));
+    });
+    SHARE_TOGGLES.forEach(id => {
+        if (!INITIAL_PARAMS.has(id)) return;
+        const el = document.getElementById(id);
+        const want = INITIAL_PARAMS.get(id) === '1';
+        if (el.classList.contains('active') !== want) el.click();
+    });
+    document.getElementById('btn-reset').click();
+}
+
+updateUrl();
