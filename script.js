@@ -1,7 +1,7 @@
 // ── Constants ────────────────────────────────────────────────────────
-let flowAmount                = 100;
+let collateralAmount                = 100;
 let LTV                       = 0.90;
-let FLOW_REBALANCE_THRESHOLD  = 0.05;
+let COLLATERAL_REBALANCE_THRESHOLD  = 0.05;
 let ERC_REBALANCE_THRESHOLD   = 0.05;
 const BASE_PRICE              = 1.00;
 let CHART_MAX       = 200;  // bar chart x-axis max in $ — doubles as needed
@@ -9,8 +9,8 @@ let yMax            = 2;    // shared price chart y-axis max
 const WINDOW_YEARS  = 5;
 
 // ── State ────────────────────────────────────────────────────────────
-let flowPrice      = BASE_PRICE;
-let yieldLoan       = flowAmount * BASE_PRICE * LTV;  // yield assets borrowed (in yield asset units)
+let collateralPrice      = BASE_PRICE;
+let yieldLoan       = collateralAmount * BASE_PRICE * LTV;  // yield assets borrowed (in yield asset units)
 let sharePrice      = 1.00;       // ERC4626 share price (dynamic)
 let shareTrendPrice = 1.00;
 let yieldAssetPrice = 1.00;       // Yield asset price (display + income)
@@ -19,7 +19,7 @@ let sharesCount     = yieldLoan / sharePrice;  // ERC shares = yield assets / sh
 let playing    = false;
 let lastTs     = null;
 let rafId      = null;
-let trendPrice = BASE_PRICE;
+let collateralTrendPrice = BASE_PRICE;
 let simMonths  = 0;
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -32,7 +32,7 @@ function usdInt(n) {
 function usdS(n) {
     return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '$';
 }
-function fv() { return flowAmount * flowPrice; }
+function cv() { return collateralAmount * collateralPrice; }
 function barPct(dollars) { return Math.min(dollars / CHART_MAX * 100, 100) + '%'; }
 
 function formatSimTime(months) {
@@ -43,15 +43,15 @@ function formatSimTime(months) {
 }
 
 // ── Rebalance ─────────────────────────────────────────────────────────
-function tryRebalanceFlow() {
+function tryRebalanceCollateral() {
     if (!document.getElementById('btn-flow-rebalance').classList.contains('active')) return false;
-    const targetYield = fv() * LTV / yieldAssetPrice;  // target in yield asset units
+    const targetYield = cv() * LTV / yieldAssetPrice;  // target in yield asset units
     const dev = (targetYield - yieldLoan) / yieldLoan;
-    if (Math.abs(dev) >= FLOW_REBALANCE_THRESHOLD) {
+    if (Math.abs(dev) >= COLLATERAL_REBALANCE_THRESHOLD) {
         const yieldDiff = targetYield - yieldLoan;
         yieldLoan   = targetYield;
         sharesCount += yieldDiff / sharePrice;
-        return 'flow';
+        return 'collateral';
     }
     return false;
 }
@@ -63,28 +63,28 @@ function tryRebalanceERC4626() {
     if (dev >= ERC_REBALANCE_THRESHOLD) {
         const excessYield = yieldHeld - yieldLoan;
         sharesCount = yieldLoan / sharePrice;
-        flowAmount += excessYield * yieldAssetPrice / flowPrice;
+        collateralAmount += excessYield * yieldAssetPrice / collateralPrice;
         return 'erc';
     }
     return false;
 }
 
 function tryRebalance() {
-    const flowResult = tryRebalanceFlow();
-    if (flowResult) return flowResult;
+    const collateralResult = tryRebalanceCollateral();
+    if (collateralResult) return collateralResult;
     const ercResult = tryRebalanceERC4626();
     if (ercResult) return ercResult;
     return false;
 }
 
 function currentDeviation() {
-    return (fv() * LTV / yieldAssetPrice - yieldLoan) / yieldLoan;
+    return (cv() * LTV / yieldAssetPrice - yieldLoan) / yieldLoan;
 }
 
 // ── Threshold lines ───────────────────────────────────────────────────
 function updateERC4626ThresholdLines() {
     const debtUsd = yieldLoan * yieldAssetPrice;
-    const barStart = Math.max(fv() - debtUsd, 0);
+    const barStart = Math.max(cv() - debtUsd, 0);
     const upper = (barStart + debtUsd * (1 + ERC_REBALANCE_THRESHOLD)) / CHART_MAX * 100;
     const lower = (barStart + debtUsd * (1 - ERC_REBALANCE_THRESHOLD)) / CHART_MAX * 100;
 
@@ -98,10 +98,10 @@ function updateERC4626ThresholdLines() {
 }
 
 function updateThresholdLines() {
-    // FLOW values at which loan deviates from fv()*LTV by ±threshold
+    // FLOW values at which loan deviates from cv()*LTV by ±threshold
     const debtUsd = yieldLoan * yieldAssetPrice;
-    const upper = (debtUsd * (1 + FLOW_REBALANCE_THRESHOLD)) / LTV;
-    const lower = (debtUsd * (1 - FLOW_REBALANCE_THRESHOLD)) / LTV;
+    const upper = (debtUsd * (1 + COLLATERAL_REBALANCE_THRESHOLD)) / LTV;
+    const lower = (debtUsd * (1 - COLLATERAL_REBALANCE_THRESHOLD)) / LTV;
 
     document.getElementById('threshold-line-upper').style.left  = Math.min(upper / CHART_MAX * 100, 100) + '%';
     document.getElementById('threshold-label-upper').style.left = Math.min(upper / CHART_MAX * 100, 100) + '%';
@@ -194,7 +194,7 @@ const priceChart = new Chart(document.getElementById('price-chart'), {
 });
 
 // Rebalance markers — only drawn on the position chart
-let flowRebalanceYears = [];
+let collateralRebalanceYears = [];
 let ercRebalanceYears  = [];
 
 const rebalancePlugin = {
@@ -206,7 +206,7 @@ const rebalancePlugin = {
         ctx.save();
         ctx.lineWidth = 1;
         ctx.setLineDash([3, 5]);
-        for (const [times, color] of [[flowRebalanceYears, 'rgba(92,184,92,0.5)'], [ercRebalanceYears, 'rgba(154,106,184,0.5)']]) {
+        for (const [times, color] of [[collateralRebalanceYears, 'rgba(92,184,92,0.5)'], [ercRebalanceYears, 'rgba(154,106,184,0.5)']]) {
             ctx.strokeStyle = color;
             for (const t of times) {
                 const x = scales.x.getPixelForValue(t);
@@ -227,7 +227,7 @@ Chart.register(rebalancePlugin);
 let posYMax = 200;
 let posYMin = 90;
 function effectiveSharePrice() { return sharePrice * yieldAssetPrice; }
-function posVal() { return fv() - yieldLoan * yieldAssetPrice + sharesCount * effectiveSharePrice(); }
+function posVal() { return cv() - yieldLoan * yieldAssetPrice + sharesCount * effectiveSharePrice(); }
 let initialPosVal = null;
 
 const positionChart = new Chart(document.getElementById('position-chart'), {
@@ -279,7 +279,7 @@ const positionChart = new Chart(document.getElementById('position-chart'), {
 });
 
 const WINDOW_SECS     = 10;
-let lastRecordedFlow  = BASE_PRICE;
+let lastRecordedCollateral  = BASE_PRICE;
 let lastRecordedShare = 1.00;
 let lastRecordedYield = 1.00;
 let lastRecordedPos   = posVal();
@@ -289,33 +289,33 @@ function recordPrice(rebalanceType) {
     const simYears = simMonths / 12;
 
     // ── Price history chart (same 5-year sliding window as position chart) ──
-    const dsFlow   = priceChart.data.datasets[0].data;
+    const dsCollateral   = priceChart.data.datasets[0].data;
     const dsShare  = priceChart.data.datasets[1].data;
     const dsYield  = priceChart.data.datasets[2].data;
     const cutoff   = simYears - WINDOW_YEARS;
 
-    const flowMoved  = Math.abs(flowPrice       - lastRecordedFlow)  >= 0.0001;
+    const collateralMoved  = Math.abs(collateralPrice       - lastRecordedCollateral)  >= 0.0001;
     const shareMoved = Math.abs(sharePrice      - lastRecordedShare) >= 0.0001;
     const yieldMoved = Math.abs(yieldAssetPrice - lastRecordedYield) >= 0.0001;
 
-    if (flowMoved || shareMoved || yieldMoved || isRebalance) {
-        lastRecordedFlow  = flowPrice;
+    if (collateralMoved || shareMoved || yieldMoved || isRebalance) {
+        lastRecordedCollateral  = collateralPrice;
         lastRecordedShare = sharePrice;
         lastRecordedYield = yieldAssetPrice;
-        dsFlow.push({ x: simYears, y: flowPrice });
+        dsCollateral.push({ x: simYears, y: collateralPrice });
         dsShare.push({ x: simYears, y: sharePrice });
         dsYield.push({ x: simYears, y: yieldAssetPrice });
-        while (dsFlow.length  > 1 && dsFlow[0].x  < cutoff) dsFlow.shift();
+        while (dsCollateral.length  > 1 && dsCollateral[0].x  < cutoff) dsCollateral.shift();
         while (dsShare.length > 1 && dsShare[0].x < cutoff) dsShare.shift();
         while (dsYield.length > 1 && dsYield[0].x < cutoff) dsYield.shift();
     } else if (playing || running1y) {
-        if (dsFlow.length  > 0) dsFlow[dsFlow.length - 1].x   = simYears;
+        if (dsCollateral.length  > 0) dsCollateral[dsCollateral.length - 1].x   = simYears;
         if (dsShare.length > 0) dsShare[dsShare.length - 1].x = simYears;
         if (dsYield.length > 0) dsYield[dsYield.length - 1].x = simYears;
     }
 
-    if (flowPrice >= yMax || sharePrice >= yMax || yieldAssetPrice >= yMax) {
-        while (yMax <= flowPrice || yMax <= sharePrice || yMax <= yieldAssetPrice) yMax *= 2;
+    if (collateralPrice >= yMax || sharePrice >= yMax || yieldAssetPrice >= yMax) {
+        while (yMax <= collateralPrice || yMax <= sharePrice || yMax <= yieldAssetPrice) yMax *= 2;
         priceChart.options.scales.y.max = yMax;
     }
 
@@ -332,10 +332,10 @@ function recordPrice(rebalanceType) {
     if (posMoved || isRebalance) {
         lastRecordedPos = pv;
         dsPos.push({ x: simYears, y: pv });
-        if (rebalanceType === 'flow') flowRebalanceYears.push(simYears);
+        if (rebalanceType === 'collateral') collateralRebalanceYears.push(simYears);
         if (rebalanceType === 'erc')  ercRebalanceYears.push(simYears);
         while (dsPos.length > 1 && dsPos[0].x < posCutoff) dsPos.shift();
-        flowRebalanceYears = flowRebalanceYears.filter(t => t >= posCutoff);
+        collateralRebalanceYears = collateralRebalanceYears.filter(t => t >= posCutoff);
         ercRebalanceYears  = ercRebalanceYears.filter(t => t >= posCutoff);
     } else if (playing || running1y) {
         if (dsPos.length > 0) dsPos[dsPos.length - 1].x = simYears;
@@ -367,7 +367,7 @@ function recordPrice(rebalanceType) {
 
 // ── Render ────────────────────────────────────────────────────────────
 function render(rebalanced) {
-    const flowVal = fv();
+    const collateralVal = cv();
     const pv = posVal();
     if (initialPosVal === null) initialPosVal = pv;
     document.getElementById('position-val').textContent = usd(pv);
@@ -382,12 +382,12 @@ function render(rebalanced) {
     } else {
         yearlyPctEl.textContent = '';
     }
-    document.getElementById('flow-price-val').textContent  = '$' + flowPrice.toFixed(2);
+    document.getElementById('flow-price-val').textContent  = '$' + collateralPrice.toFixed(2);
     document.getElementById('yield-price-val').textContent = '$' + yieldAssetPrice.toFixed(2);
     document.getElementById('share-price-val').textContent = '$' + sharePrice.toFixed(2);
 
     // Resize bar chart max: double if hitting ceiling, halve if below 25%
-    const barRef = fv();
+    const barRef = cv();
     let chartMaxChanged = false;
     if (barRef >= CHART_MAX) {
         while (CHART_MAX <= barRef) CHART_MAX *= 2;
@@ -398,7 +398,7 @@ function render(rebalanced) {
     }
     if (chartMaxChanged) {
         rebuildGridlines();
-        const yieldLeftNow = barPct(Math.max(fv() - yieldLoan * yieldAssetPrice, 0));
+        const yieldLeftNow = barPct(Math.max(cv() - yieldLoan * yieldAssetPrice, 0));
         document.getElementById('pyusd-bar').style.left   = yieldLeftNow;
         document.getElementById('pyusd-bar').style.width  = barPct(yieldLoan * yieldAssetPrice);
         document.getElementById('shares-bar').style.left  = yieldLeftNow;
@@ -407,20 +407,20 @@ function render(rebalanced) {
 
 
 
-    document.getElementById('flow-bar').style.width = barPct(flowVal);
-    document.getElementById('flow-bar-text').textContent = `${flowAmount.toFixed(2)} FLOW\n${usdS(flowVal)}`;
+    document.getElementById('flow-bar').style.width = barPct(collateralVal);
+    document.getElementById('flow-bar-text').textContent = `${collateralAmount.toFixed(2)} Collateral Token\n${usdS(collateralVal)}`;
 
     // Yield asset bar = loan (debt), right-anchored to FLOW's right edge, grows leftward
-    const yieldLeft = barPct(Math.max(fv() - yieldLoan * yieldAssetPrice, 0));
+    const yieldLeft = barPct(Math.max(cv() - yieldLoan * yieldAssetPrice, 0));
     document.getElementById('pyusd-bar').style.left         = yieldLeft;
     document.getElementById('pyusd-bar').style.width        = barPct(yieldLoan * yieldAssetPrice);
-    document.getElementById('pyusd-bar-text').textContent   = `${yieldLoan.toFixed(2)} Yield Asset\n${usdS(yieldLoan * yieldAssetPrice)}`;
+    document.getElementById('pyusd-bar-text').textContent   = `${yieldLoan.toFixed(2)} Yield Token\n${usdS(yieldLoan * yieldAssetPrice)}`;
 
     // Shares bar starts at yield asset's left edge, grows rightward
     const sharesValueNow = sharesCount * effectiveSharePrice();
     document.getElementById('shares-bar').style.left        = yieldLeft;
     document.getElementById('shares-bar').style.width       = barPct(sharesValueNow);
-    document.getElementById('shares-bar-text').textContent  = `${sharesCount.toFixed(2)} shares\n${(sharesCount * sharePrice).toFixed(2)} yield asset\n${usdS(sharesValueNow)}`;
+    document.getElementById('shares-bar-text').textContent  = `${sharesCount.toFixed(2)} shares\n${(sharesCount * sharePrice).toFixed(2)} yield token\n${usdS(sharesValueNow)}`;
 
     // Threshold lines track live yieldLoan every frame
     updateThresholdLines();
@@ -428,7 +428,7 @@ function render(rebalanced) {
     if (rebalanced) {
         const toast = document.getElementById('toast');
         document.getElementById('toast-body').textContent =
-            `Rebalanced \u2192 ${usd(yieldLoan * yieldAssetPrice)} yield debt at FLOW ${usd(flowVal)}`;
+            `Rebalanced \u2192 ${usd(yieldLoan * yieldAssetPrice)} yield debt at collateral ${usd(collateralVal)}`;
         toast.classList.add('show');
         clearTimeout(toast._timer);
         toast._timer = setTimeout(() => toast.classList.remove('show'), 3000);
@@ -448,8 +448,8 @@ function advancePrices(simYearFrac, dtSecs) {
     const period    = Math.max(parseFloat(document.getElementById('sl-period').value), 0.1);
     const amplitude = flowVolOn ? parseFloat(document.getElementById('sl-velocity').value) : 0;
 
-    trendPrice = Math.max(trendPrice * Math.pow(1 + annualPct / 100, simYearFrac), 0.01);
-    flowPrice  = Math.max(trendPrice + amplitude * Math.sin(2 * Math.PI * simTime / period), 0.01);
+    collateralTrendPrice = Math.max(collateralTrendPrice * Math.pow(1 + annualPct / 100, simYearFrac), 0.01);
+    collateralPrice  = Math.max(collateralTrendPrice + amplitude * Math.sin(2 * Math.PI * simTime / period), 0.01);
 
     const shareAnnualPct = parseFloat(document.getElementById('sl-share-drift').value);
     const shareVolOn     = document.getElementById('btn-share-vol').classList.contains('active');
@@ -505,10 +505,10 @@ document.getElementById('btn-reset').addEventListener('click', () => {
     if (rafId) cancelAnimationFrame(rafId);
     document.getElementById('btn-play').textContent = '\u25B6 Play';
 
-    flowPrice   = BASE_PRICE;
-    flowAmount  = 100;
-    trendPrice  = BASE_PRICE;
-    yieldLoan   = flowAmount * BASE_PRICE * LTV;  // yield asset units (yieldAssetPrice reset to 1)
+    collateralPrice   = BASE_PRICE;
+    collateralAmount  = 100;
+    collateralTrendPrice  = BASE_PRICE;
+    yieldLoan   = collateralAmount * BASE_PRICE * LTV;  // yield asset units (yieldAssetPrice reset to 1)
     CHART_MAX   = 200;
     yMax        = 2;
     rebuildGridlines();
@@ -517,7 +517,7 @@ document.getElementById('btn-reset').addEventListener('click', () => {
     simTime           = 0;
     simMonths         = 0;
     initialPosVal     = null;
-    lastRecordedFlow  = BASE_PRICE;
+    lastRecordedCollateral  = BASE_PRICE;
     lastRecordedShare = 1.00;
     sharePrice        = 1.00;
     shareTrendPrice   = 1.00;
@@ -534,7 +534,7 @@ document.getElementById('btn-reset').addEventListener('click', () => {
 
     sharesCount = yieldLoan / sharePrice;
     lastRecordedPos = posVal();
-    flowRebalanceYears = [];
+    collateralRebalanceYears = [];
     ercRebalanceYears  = [];
     positionChart.data.datasets[0].data = [{ x: 0, y: posVal() }, { x: 0.001, y: posVal() }];
     posYMax = 200;
@@ -545,14 +545,14 @@ document.getElementById('btn-reset').addEventListener('click', () => {
     positionChart.options.scales.x.max  = WINDOW_YEARS;
     positionChart.update('none');
 
-    const resetYieldLeft = barPct(Math.max(fv() - yieldLoan * yieldAssetPrice, 0));
-    document.getElementById('flow-bar').style.width    = barPct(fv());
+    const resetYieldLeft = barPct(Math.max(cv() - yieldLoan * yieldAssetPrice, 0));
+    document.getElementById('flow-bar').style.width    = barPct(cv());
     document.getElementById('pyusd-bar').style.left    = resetYieldLeft;
     document.getElementById('pyusd-bar').style.width   = barPct(yieldLoan * yieldAssetPrice);
     document.getElementById('shares-bar').style.left   = resetYieldLeft;
     document.getElementById('shares-bar').style.width  = barPct(sharesCount * effectiveSharePrice());
-    document.getElementById('pyusd-bar-text').textContent  = `${(sharesCount * sharePrice).toFixed(2)} Yield Asset\n${usdS(sharesCount * effectiveSharePrice())}`;
-    document.getElementById('shares-bar-text').textContent = `${sharesCount.toFixed(2)} shares\n${(sharesCount * sharePrice).toFixed(2)} yield asset\n${usdS(sharesCount * effectiveSharePrice())}`;
+    document.getElementById('pyusd-bar-text').textContent  = `${(sharesCount * sharePrice).toFixed(2)} Yield Token\n${usdS(sharesCount * effectiveSharePrice())}`;
+    document.getElementById('shares-bar-text').textContent = `${sharesCount.toFixed(2)} shares\n${(sharesCount * sharePrice).toFixed(2)} yield token\n${usdS(sharesCount * effectiveSharePrice())}`;
 
 
     updateThresholdLines();
@@ -663,7 +663,7 @@ document.getElementById('sl-ltv').addEventListener('input', e => {
     updateThresholdLines();
 });
 document.getElementById('sl-threshold-flow').addEventListener('input', e => {
-    FLOW_REBALANCE_THRESHOLD = parseInt(e.target.value) / 100;
+    COLLATERAL_REBALANCE_THRESHOLD = parseInt(e.target.value) / 100;
     document.getElementById('val-threshold-flow').textContent = parseInt(e.target.value);
     updateThresholdLines();
 });
@@ -730,13 +730,13 @@ applyVolDim('btn-share-vol', 'share-vol-period', 'share-vol-amplitude');
 applyVolDim('btn-yield-vol', 'yield-vol-period', 'yield-vol-amplitude');
 
 // ── Initial render ────────────────────────────────────────────────────
-const initYieldLeft = barPct(Math.max(fv() - yieldLoan * yieldAssetPrice, 0));
-document.getElementById('flow-bar').style.width    = barPct(fv());
+const initYieldLeft = barPct(Math.max(cv() - yieldLoan * yieldAssetPrice, 0));
+document.getElementById('flow-bar').style.width    = barPct(cv());
 document.getElementById('pyusd-bar').style.left    = initYieldLeft;
 document.getElementById('pyusd-bar').style.width   = barPct(yieldLoan * yieldAssetPrice);
 document.getElementById('shares-bar').style.left   = initYieldLeft;
 document.getElementById('shares-bar').style.width  = barPct(sharesCount * effectiveSharePrice());
-document.getElementById('pyusd-bar-text').textContent  = `${(sharesCount * sharePrice).toFixed(2)} Yield Asset\n${usdS(sharesCount * effectiveSharePrice())}`;
-document.getElementById('shares-bar-text').textContent = `${sharesCount.toFixed(2)} shares\n${(sharesCount * sharePrice).toFixed(2)} yield asset\n${usdS(sharesCount * effectiveSharePrice())}`;
+document.getElementById('pyusd-bar-text').textContent  = `${(sharesCount * sharePrice).toFixed(2)} Yield Token\n${usdS(sharesCount * effectiveSharePrice())}`;
+document.getElementById('shares-bar-text').textContent = `${sharesCount.toFixed(2)} shares\n${(sharesCount * sharePrice).toFixed(2)} yield token\n${usdS(sharesCount * effectiveSharePrice())}`;
 updateThresholdLines();
 render(false);

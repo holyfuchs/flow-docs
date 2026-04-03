@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>FLOW Rebalancer</title>
+    <title>Collateral Token Rebalancer</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -440,7 +440,7 @@
 
             <!-- FLOW row -->
             <div style="display:flex; align-items:center; gap:10px; padding-bottom:5px;">
-                <span class="param-group-label" style="white-space:nowrap; padding-bottom:0; width:52px;">FLOW</span>
+                <span class="param-group-label" style="white-space:nowrap; padding-bottom:0; width:52px;">Collateral<br>Token</span>
                 <div class="param" style="flex:0 0 160px;">
                     <div class="param-label">Yearly Return &nbsp;<span id="val-drift">10</span>%</div>
                     <input type="range" id="sl-drift" min="-10" max="30" step="1" value="10">
@@ -469,7 +469,7 @@
 
             <!-- Yield asset row -->
             <div style="display:flex; align-items:center; gap:10px; border-top:1px solid #1a1a28; border-bottom:1px solid #1a1a28; padding:4px 0;">
-                <span class="param-group-label" style="color:#5c7db8; padding-bottom:0; width:52px; line-height:1.4;">Yield<br>asset</span>
+                <span class="param-group-label" style="color:#5c7db8; padding-bottom:0; width:52px; line-height:1.4;">Yield<br>Token</span>
                 <div style="flex:0 0 160px; display:flex; flex-direction:column; gap:4px;">
                     <div class="param">
                         <div class="param-label">Yearly Return &nbsp;<span id="val-yield-drift">0</span>%</div>
@@ -553,11 +553,11 @@
             <span>Price History</span>
             <span style="display:flex; gap:16px;">
                 <span style="display:flex; flex-direction:column; align-items:flex-end; gap:1px;">
-                    <span style="font-size:9px; color:#444; text-transform:uppercase; letter-spacing:1px;">FLOW</span>
+                    <span style="font-size:9px; color:#444; text-transform:uppercase; letter-spacing:1px;">Collateral Token</span>
                     <span id="flow-price-val" style="font-size:14px; color:#5cb85c; letter-spacing:0;">$1.00</span>
                 </span>
                 <span style="display:flex; flex-direction:column; align-items:flex-end; gap:1px;">
-                    <span style="font-size:9px; color:#444; text-transform:uppercase; letter-spacing:1px;">Yield asset</span>
+                    <span style="font-size:9px; color:#444; text-transform:uppercase; letter-spacing:1px;">Yield Token</span>
                     <span id="yield-price-val" style="font-size:14px; color:#5c7db8; letter-spacing:0;">$1.00</span>
                 </span>
                 <span style="display:flex; flex-direction:column; align-items:flex-end; gap:1px;">
@@ -573,8 +573,8 @@
 
     <div class="chart-outer">
         <div class="labels-col">
-            <div class="bar-label-cell">FLOW</div>
-            <div class="bar-label-cell">Yield<br>Asset</div>
+            <div class="bar-label-cell">Collateral<br>Token</div>
+            <div class="bar-label-cell">Yield<br>Token</div>
             <div class="bar-label-cell">ERC-4626</div>
         </div>
         <div class="chart-col">
