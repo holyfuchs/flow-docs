@@ -1,4 +1,8 @@
 import { runSimulation } from './simulation.js';
+import { FLOW_PRICES }     from './price_data/flow_prices.js';
+import { ETHEREUM_PRICES } from './price_data/ethereum_prices.js';
+
+const HISTORY_DATA = { 'history-flow': FLOW_PRICES, 'history-eth': ETHEREUM_PRICES };
 
 // ── Formatters ────────────────────────────────────────────────────────
 function usd(n)   { return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
@@ -17,8 +21,8 @@ function barPct(dollars) { return Math.min(dollars / CHART_MAX * 100, 100) + '%'
 
 // ── Simulation state ──────────────────────────────────────────────────
 const N_POINTS  = 4000;
-let simResult   = null;   // last result from runSimulation()
-let priceArrays = null;   // { collateral, yield, share, times }
+let simResult        = null;   // last result from runSimulation()
+let priceArrays      = null;   // { collateral, yield, share, times }
 
 let playing  = false;
 let playIdx  = 0;         // float — fractional index into result arrays
@@ -77,7 +81,20 @@ function genSeries(drift, volType, params, N, dt, seed) {
     const mu = drift;
     const T  = (N - 1) * dt;
 
-    if (volType === 'none') {
+    if (volType in HISTORY_DATA) {
+        const prices     = HISTORY_DATA[volType];
+        const daysNeeded = Math.max(2, Math.round(T * 365.25));
+        const offset     = Math.max(0, Math.round(params.historyOffset || 0));
+        const endIdx     = Math.max(daysNeeded, prices.length - offset);
+        const src        = prices.slice(Math.max(0, endIdx - daysNeeded), endIdx);
+        const base       = src[0];
+        for (let i = 0; i < N; i++) {
+            const t  = i / (N - 1) * (src.length - 1);
+            const lo = Math.floor(t), hi = Math.min(lo + 1, src.length - 1);
+            out[i]   = Math.max((src[lo] + (src[hi] - src[lo]) * (t - lo)) / base, 0.001);
+        }
+        return out;
+    } else if (volType === 'none') {
         for (let i = 1; i < N; i++) out[i] = Math.max(Math.pow(1 + mu, i * dt), 0.001);
 
     } else if (volType === 'sine') {
@@ -149,6 +166,7 @@ function generatePriceArrays() {
         sigma:  numVal('num-flow-sigma') / 100,
         lambda: numVal('num-flow-lambda'),
         jumpSize: numVal('num-flow-jump') / 100,
+        historyOffset: numVal('num-flow-history-offset'),
     }, N_POINTS, dt, parseInt(document.getElementById('sl-flow-seed').value) || 1);
 
     const yieldVol = document.getElementById('sel-yield-vol').value;
@@ -158,6 +176,7 @@ function generatePriceArrays() {
         sigma:  numVal('num-yield-sigma') / 100,
         lambda: numVal('num-yield-lambda'),
         jumpSize: numVal('num-yield-jump') / 100,
+        historyOffset: numVal('num-yield-history-offset'),
     }, N_POINTS, dt, parseInt(document.getElementById('sl-yield-seed').value) || 1);
 
     const shareVol = document.getElementById('sel-share-vol').value;
@@ -167,6 +186,7 @@ function generatePriceArrays() {
         sigma:  numVal('num-share-sigma') / 100,
         lambda: numVal('num-share-lambda'),
         jumpSize: numVal('num-share-jump') / 100,
+        historyOffset: numVal('num-share-history-offset'),
     }, N_POINTS, dt, parseInt(document.getElementById('sl-share-seed').value) || 1);
 
     return { collateral, yield: yieldArr, share, times };
@@ -175,12 +195,8 @@ function generatePriceArrays() {
 // ── Recompute everything ──────────────────────────────────────────────
 function recompute() {
     priceArrays = generatePriceArrays();
-    simResult   = runSimulation(
-        priceArrays.collateral,
-        priceArrays.yield,
-        priceArrays.share,
-        gatherSettings()
-    );
+    const settings = gatherSettings();
+    simResult   = runSimulation(priceArrays.collateral, priceArrays.yield, priceArrays.share, settings);
     // Force position chart to reload full dataset
     positionChart.data.datasets[0].data = [];
     updatePriceChart();
@@ -428,6 +444,7 @@ function renderFrame(i) {
     const finalReturn = (simResult.positionValues[N_POINTS - 1] / simResult.positionValues[0] - 1) * 100;
     fmt(finalReturn, document.getElementById('pos-total-pct'));
 
+
     // Position chart: show full precomputed trace, cursor draws the current position
     if (positionChart.data.datasets[0].data.length !== N_POINTS) {
         const allY  = simResult.positionValues;
@@ -605,6 +622,10 @@ document.getElementById('num-duration').addEventListener('input', e => {
 syncPriceControl('sl-flow-seed',       'num-flow-seed',       v => Math.round(v));
 syncPriceControl('sl-yield-seed',      'num-yield-seed',      v => Math.round(v));
 syncPriceControl('sl-share-seed',      'num-share-seed',      v => Math.round(v));
+
+syncPriceControl('sl-flow-history-offset',  'num-flow-history-offset',  v => Math.round(v));
+syncPriceControl('sl-yield-history-offset', 'num-yield-history-offset', v => Math.round(v));
+syncPriceControl('sl-share-history-offset', 'num-share-history-offset', v => Math.round(v));
 syncPriceControl('sl-borrow-fee',      'num-borrow-fee',      v => Math.round(v));
 syncPriceControl('sl-flow-sigma',      'num-flow-sigma',      v => Math.round(v));
 syncPriceControl('sl-flow-lambda',     'num-flow-lambda',     v => Math.round(v));
@@ -642,6 +663,7 @@ function applyVolSelect(prefix, selId) {
     document.getElementById(prefix + '-vol-lambda').classList.toggle('hidden',    v !== 'jump');
     document.getElementById(prefix + '-vol-jump').classList.toggle('hidden',      v !== 'jump');
     document.getElementById(prefix + '-vol-seed').classList.toggle('hidden',      v !== 'gbm' && v !== 'jump');
+    document.getElementById(prefix + '-vol-history').classList.toggle('hidden',   !(v in HISTORY_DATA));
 }
 
 [['flow', 'sel-flow-vol'], ['yield', 'sel-yield-vol'], ['share', 'sel-share-vol']].forEach(([prefix, selId]) => {
@@ -691,7 +713,8 @@ const SHARE_SLIDERS = ['sl-duration','sl-drift','sl-threshold-flow-up','sl-thres
                        'sl-flow-sigma','sl-flow-lambda','sl-flow-jump',
                        'sl-yield-sigma','sl-yield-lambda','sl-yield-jump',
                        'sl-share-sigma','sl-share-lambda','sl-share-jump',
-                       'sl-flow-seed','sl-yield-seed','sl-share-seed'];
+                       'sl-flow-seed','sl-yield-seed','sl-share-seed',
+                       'sl-flow-history-offset','sl-yield-history-offset','sl-share-history-offset'];
 const SHARE_TOGGLES = ['btn-flow-rebalance','btn-share-rebalance'];
 const SHARE_SELECTS = ['sel-flow-vol','sel-yield-vol','sel-share-vol'];
 
