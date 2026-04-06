@@ -33,7 +33,8 @@ let rafId    = null;
 function gatherSettings() {
     return {
         durationYears:              durationYears(),
-        ltv:                        numVal('num-ltv') / 100,
+        ltvUp:                      numVal('num-ltv-up') / 100,
+        ltvDown:                    numVal('num-ltv-down') / 100,
         collateralThresholdUp:      numVal('num-threshold-flow-up')   / 100,
         collateralThresholdDown:    numVal('num-threshold-flow-down') / 100,
         ercThresholdUp:             numVal('num-threshold-erc-up')    / 100,
@@ -208,12 +209,13 @@ function updateThresholdLines() {
     if (!simResult) return;
     const i       = Math.min(Math.floor(playIdx), N_POINTS - 1);
     const yp      = priceArrays.yield[i];
-    const ltv     = numVal('num-ltv') / 100;
+    const ltvUp   = numVal('num-ltv-up')   / 100;
+    const ltvDown = numVal('num-ltv-down') / 100;
     const threshUp   = numVal('num-threshold-flow-up')   / 100;
     const threshDown = numVal('num-threshold-flow-down') / 100;
     const debtUsd = simResult.yieldTokenValues[i];
-    const upper   = (debtUsd * (1 + threshUp))   / ltv;
-    const lower   = (debtUsd * (1 - threshDown)) / ltv;
+    const upper   = (debtUsd * (1 + threshUp))   / ltvUp;
+    const lower   = (debtUsd * (1 - threshDown)) / ltvDown;
 
     document.getElementById('threshold-line-upper').style.left   = Math.min(upper / CHART_MAX * 100, 100) + '%';
     document.getElementById('threshold-label-upper').style.left  = Math.min(upper / CHART_MAX * 100, 100) + '%';
@@ -563,14 +565,16 @@ function syncPriceControl(slId, numId, fmt) {
 }
 
 // ── Config listeners ──────────────────────────────────────────────────
-document.getElementById('num-ltv').addEventListener('input', e => {
-    const v = parseInt(e.target.value);
-    if (!isNaN(v)) document.getElementById('sl-ltv').value = Math.min(0.95, Math.max(0.5, v / 100));
-    recompute(); updateUrl(); updateResetBtns();
-});
-document.getElementById('sl-ltv').addEventListener('input', e => {
-    document.getElementById('num-ltv').value = Math.round(parseFloat(e.target.value) * 100);
-    recompute();
+['ltv-up', 'ltv-down'].forEach(suffix => {
+    document.getElementById('num-' + suffix).addEventListener('input', e => {
+        const v = parseInt(e.target.value);
+        if (!isNaN(v)) document.getElementById('sl-' + suffix).value = Math.min(0.95, Math.max(0.5, v / 100));
+        recompute(); updateUrl(); updateResetBtns();
+    });
+    document.getElementById('sl-' + suffix).addEventListener('input', e => {
+        document.getElementById('num-' + suffix).value = Math.round(parseFloat(e.target.value) * 100);
+        recompute();
+    });
 });
 
 ['sl-threshold-flow-up','sl-threshold-flow-down','sl-threshold-erc-up','sl-threshold-erc-down'].forEach(slId => {
@@ -664,6 +668,7 @@ function applyVolSelect(prefix, selId) {
     document.getElementById(prefix + '-vol-jump').classList.toggle('hidden',      v !== 'jump');
     document.getElementById(prefix + '-vol-seed').classList.toggle('hidden',      v !== 'gbm' && v !== 'jump');
     document.getElementById(prefix + '-vol-history').classList.toggle('hidden',   !(v in HISTORY_DATA));
+    document.getElementById(prefix + '-vol-drift').classList.toggle('dimmed',     v in HISTORY_DATA);
 }
 
 [['flow', 'sel-flow-vol'], ['yield', 'sel-yield-vol'], ['share', 'sel-share-vol']].forEach(([prefix, selId]) => {
@@ -707,7 +712,7 @@ window.__resizePriceChart = () => {
 
 // ── URL sharing ───────────────────────────────────────────────────────
 const SHARE_SLIDERS = ['sl-duration','sl-drift','sl-threshold-flow-up','sl-threshold-flow-down','sl-collateral-swap-fee','sl-period','sl-velocity',
-                       'sl-yield-drift','sl-borrow-fee','sl-ltv','sl-yield-period','sl-yield-velocity',
+                       'sl-yield-drift','sl-borrow-fee','sl-ltv-up','sl-ltv-down','sl-yield-period','sl-yield-velocity',
                        'sl-share-drift','sl-threshold-erc-up','sl-threshold-erc-down','sl-erc-swap-fee','sl-share-period','sl-share-velocity',
                        'sl-interval-flow','sl-interval-erc',
                        'sl-flow-sigma','sl-flow-lambda','sl-flow-jump',
@@ -718,7 +723,7 @@ const SHARE_SLIDERS = ['sl-duration','sl-drift','sl-threshold-flow-up','sl-thres
 const SHARE_TOGGLES = ['btn-flow-rebalance','btn-share-rebalance'];
 const SHARE_SELECTS = ['sel-flow-vol','sel-yield-vol','sel-share-vol'];
 
-const PROTOCOL_SLIDERS   = ['sl-threshold-flow-up', 'sl-threshold-flow-down', 'sl-threshold-erc-up', 'sl-threshold-erc-down', 'sl-interval-flow', 'sl-interval-erc', 'sl-ltv'];
+const PROTOCOL_SLIDERS   = ['sl-threshold-flow-up', 'sl-threshold-flow-down', 'sl-threshold-erc-up', 'sl-threshold-erc-down', 'sl-interval-flow', 'sl-interval-erc', 'sl-ltv-up', 'sl-ltv-down'];
 const PROTOCOL_TOGGLES   = ['btn-flow-rebalance', 'btn-share-rebalance'];
 const PRICE_DATA_SLIDERS = ['sl-drift','sl-period','sl-velocity','sl-yield-drift','sl-yield-period','sl-yield-velocity','sl-share-drift','sl-share-period','sl-share-velocity','sl-flow-seed','sl-yield-seed','sl-share-seed'];
 const PRICE_DATA_SELECTS = ['sel-flow-vol','sel-yield-vol','sel-share-vol'];
@@ -737,7 +742,7 @@ function writeParamValue(slId, val) {
     if (numEl) {
         numEl.value = val;
         let sv = parseFloat(val);
-        if (slId === 'sl-ltv') sv = sv / 100;
+        if (slId === 'sl-ltv-up' || slId === 'sl-ltv-down') sv = sv / 100;
         else if (slId === 'sl-collateral-swap-fee' || slId === 'sl-erc-swap-fee') sv = feeToSlider(sv / 100);
         sl.value = Math.min(parseFloat(sl.max), Math.max(parseFloat(sl.min), sv));
     } else {

@@ -6,7 +6,8 @@
  * @param {number[]} sharePrices       - ERC4626 share price at each timestep
  * @param {object}   settings
  * @param {number}   settings.durationYears
- * @param {number}   settings.ltv                        - e.g. 0.90
+ * @param {number}   settings.ltvUp                      - e.g. 0.80  target LTV when rebalancing up
+ * @param {number}   settings.ltvDown                    - e.g. 0.80  target LTV when rebalancing down
  * @param {number}   settings.collateralThresholdUp      - e.g. 0.05
  * @param {number}   settings.collateralThresholdDown    - e.g. 0.05
  * @param {number}   settings.ercThresholdUp             - e.g. 0.05
@@ -29,7 +30,8 @@
 export function runSimulation(collateralPrices, yieldAssetPrices, sharePrices, settings) {
     const {
         durationYears,
-        ltv,
+        ltvUp,
+        ltvDown,
         collateralThresholdUp,
         collateralThresholdDown,
         ercThresholdUp,
@@ -47,8 +49,8 @@ export function runSimulation(collateralPrices, yieldAssetPrices, sharePrices, s
     const dtYears = durationYears / (n - 1);
 
     let collateralAmount = 100;
-    let yieldLoan        = collateralAmount * collateralPrices[0] * ltv;   // yield asset units
-    let sharesCount      = yieldLoan * (1 - ercSwapFee) / sharePrices[0]; // ERC4626 share units
+    let yieldLoan        = collateralAmount * collateralPrices[0] * ltvUp;  // initial loan at ltvUp
+    let sharesCount      = yieldLoan * (1 - ercSwapFee) / sharePrices[0];  // ERC4626 share units
 
     const collateralValues         = new Array(n);
     const yieldTokenValues         = new Array(n);
@@ -75,14 +77,18 @@ export function runSimulation(collateralPrices, yieldAssetPrices, sharePrices, s
 
         // Collateral rebalance: bring loan back to cv * ltv
         if (collateralRebalanceEnabled && t - lastCollateralRebalance >= collateralIntervalYears) {
-            const targetYield = cvUsd * ltv / yp;
-            const dev         = (targetYield - yieldLoan) / yieldLoan;
-            if (dev >= collateralThresholdUp || dev <= -collateralThresholdDown) {
-                const yieldDiff = targetYield - yieldLoan;
-                yieldLoan   = targetYield;
+            // Use ltvUp when increasing loan (collateral up), ltvDown when decreasing (collateral down)
+            const targetUp   = cvUsd * ltvUp   / yp;
+            const targetDown = cvUsd * ltvDown  / yp;
+            const devUp      = (targetUp   - yieldLoan) / yieldLoan;
+            const devDown    = (targetDown - yieldLoan) / yieldLoan;
+            if (devUp >= collateralThresholdUp || devDown <= -collateralThresholdDown) {
+                const target    = devUp >= collateralThresholdUp ? targetUp : targetDown;
+                const yieldDiff = target - yieldLoan;
+                yieldLoan   = target;
                 sharesCount += yieldDiff > 0
                     ? yieldDiff * (1 - ercSwapFee) / sp          // buying shares: pay fee
-                    : yieldDiff / ((1 - ercSwapFee) * sp);       // selling shares: pay fee (need more shares)
+                    : yieldDiff / ((1 - ercSwapFee) * sp);       // selling shares: pay fee
                 collateralRebalanceTimes.push(t);
                 lastCollateralRebalance = t;
             }
