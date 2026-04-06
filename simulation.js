@@ -101,12 +101,11 @@ export function runSimulation(collateralPrices, yieldAssetPrices, sharePrices, s
                 lastErcRebalance = t;
             } else if (dev <= -ercThresholdDown) {
                 // Shares deficit → sell collateral to buy more shares
-                // RIGHT NOW NOT IMPLEMENTED!
-                // const shortfall   = yieldLoan - yieldHeld;
-                // sharesCount       = yieldLoan / sp;
-                // collateralAmount -= shortfall * yp * (1 + collateralSwapFee) / cp;
-                // ercRebalanceTimes.push(t);
-                // lastErcRebalance = t;
+                const shortfall   = yieldLoan - yieldHeld;
+                sharesCount       = yieldLoan / sp;
+                collateralAmount -= shortfall * yp * (1 + collateralSwapFee) / cp;
+                ercRebalanceTimes.push(t);
+                lastErcRebalance = t;
             }
         }
 
