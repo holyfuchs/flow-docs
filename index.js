@@ -695,19 +695,39 @@ const SHARE_SLIDERS = ['sl-duration','sl-drift','sl-threshold-flow-up','sl-thres
 const SHARE_TOGGLES = ['btn-flow-rebalance','btn-share-rebalance'];
 const SHARE_SELECTS = ['sel-flow-vol','sel-yield-vol','sel-share-vol'];
 
-const INITIAL_PARAMS  = new URLSearchParams(location.search);
-const SLIDER_DEFAULTS = Object.fromEntries(SHARE_SLIDERS.map(id => [id, document.getElementById(id).value]));
-const TOGGLE_DEFAULTS = Object.fromEntries(SHARE_TOGGLES.map(id => [id, isActive(id)]));
-const SELECT_DEFAULTS = Object.fromEntries(SHARE_SELECTS.map(id => [id, document.getElementById(id).value]));
-
 const PROTOCOL_SLIDERS   = ['sl-threshold-flow-up', 'sl-threshold-flow-down', 'sl-threshold-erc-up', 'sl-threshold-erc-down', 'sl-interval-flow', 'sl-interval-erc', 'sl-ltv'];
 const PROTOCOL_TOGGLES   = ['btn-flow-rebalance', 'btn-share-rebalance'];
 const PRICE_DATA_SLIDERS = ['sl-drift','sl-period','sl-velocity','sl-yield-drift','sl-yield-period','sl-yield-velocity','sl-share-drift','sl-share-period','sl-share-velocity','sl-flow-seed','sl-yield-seed','sl-share-seed'];
 const PRICE_DATA_SELECTS = ['sel-flow-vol','sel-yield-vol','sel-share-vol'];
 const FEE_SLIDERS        = ['sl-collateral-swap-fee','sl-erc-swap-fee','sl-borrow-fee'];
 
+// Read the authoritative value for a slider — prefers the num input when present
+function readParamValue(slId) {
+    const numEl = document.getElementById(slId.replace('sl-', 'num-'));
+    return numEl ? numEl.value : document.getElementById(slId).value;
+}
+
+// Write a value to a slider param — sets both the num input and the slider (no events fired)
+function writeParamValue(slId, val) {
+    const sl    = document.getElementById(slId);
+    const numEl = document.getElementById(slId.replace('sl-', 'num-'));
+    if (numEl) {
+        numEl.value = val;
+        let sv = parseFloat(val);
+        if (slId === 'sl-ltv') sv = sv / 100;
+        else if (slId === 'sl-collateral-swap-fee' || slId === 'sl-erc-swap-fee') sv = feeToSlider(sv / 100);
+        sl.value = Math.min(parseFloat(sl.max), Math.max(parseFloat(sl.min), sv));
+    } else {
+        sl.value = val;
+    }
+}
+
+const PARAM_DEFAULTS  = Object.fromEntries(SHARE_SLIDERS.map(id => [id, readParamValue(id)]));
+const TOGGLE_DEFAULTS = Object.fromEntries(SHARE_TOGGLES.map(id => [id, isActive(id)]));
+const SELECT_DEFAULTS = Object.fromEntries(SHARE_SELECTS.map(id => [id, document.getElementById(id).value]));
+
 function isAtDefaults(sliderIds, selectIds = [], toggleIds = []) {
-    return sliderIds.every(id => document.getElementById(id).value === SLIDER_DEFAULTS[id])
+    return sliderIds.every(id => readParamValue(id) === PARAM_DEFAULTS[id])
         && selectIds.every(id => document.getElementById(id).value === SELECT_DEFAULTS[id])
         && toggleIds.every(id => isActive(id) === TOGGLE_DEFAULTS[id]);
 }
@@ -719,56 +739,47 @@ function updateResetBtns() {
 }
 
 document.getElementById('btn-reset-price-data').addEventListener('click', () => {
-    PRICE_DATA_SLIDERS.forEach(id => { const el = document.getElementById(id); el.value = SLIDER_DEFAULTS[id]; el.dispatchEvent(new Event('input')); });
-    PRICE_DATA_SELECTS.forEach(id => { const el = document.getElementById(id); el.value = SELECT_DEFAULTS[id]; el.dispatchEvent(new Event('change')); });
-    updateResetBtns();
+    PRICE_DATA_SLIDERS.forEach(id => writeParamValue(id, PARAM_DEFAULTS[id]));
+    PRICE_DATA_SELECTS.forEach(id => { document.getElementById(id).value = SELECT_DEFAULTS[id]; document.getElementById(id).dispatchEvent(new Event('change')); });
+    recompute(); updateUrl(); updateResetBtns();
 });
 document.getElementById('btn-reset-fees').addEventListener('click', () => {
-    FEE_SLIDERS.forEach(id => { const el = document.getElementById(id); el.value = SLIDER_DEFAULTS[id]; el.dispatchEvent(new Event('input')); });
-    updateResetBtns();
+    FEE_SLIDERS.forEach(id => writeParamValue(id, PARAM_DEFAULTS[id]));
+    recompute(); updateUrl(); updateResetBtns();
 });
 document.getElementById('btn-reset-protocol').addEventListener('click', () => {
-    PROTOCOL_SLIDERS.forEach(id => { const el = document.getElementById(id); el.value = SLIDER_DEFAULTS[id]; el.dispatchEvent(new Event('input')); });
-    PROTOCOL_TOGGLES.forEach(id => {
-        const el   = document.getElementById(id);
-        const want = TOGGLE_DEFAULTS[id];
-        if (isActive(id) !== want) el.click();
-    });
-    updateResetBtns();
+    PROTOCOL_SLIDERS.forEach(id => writeParamValue(id, PARAM_DEFAULTS[id]));
+    PROTOCOL_TOGGLES.forEach(id => { if (isActive(id) !== TOGGLE_DEFAULTS[id]) document.getElementById(id).click(); });
+    recompute(); updateUrl(); updateResetBtns();
 });
 
 function updateUrl() {
-    const params = new URLSearchParams();
-    SHARE_SLIDERS.forEach(id => { const v = document.getElementById(id).value; if (v !== SLIDER_DEFAULTS[id]) params.set(id, v); });
-    SHARE_TOGGLES.forEach(id => { const v = isActive(id) ? '1' : '0'; if (v !== (TOGGLE_DEFAULTS[id] ? '1' : '0')) params.set(id, v); });
-    SHARE_SELECTS.forEach(id => { const v = document.getElementById(id).value; if (v !== SELECT_DEFAULTS[id]) params.set(id, v); });
-    const qs = params.toString();
-    history.replaceState(null, '', qs ? `${location.pathname}?${qs}` : location.pathname);
+    const vd = {}, td = {}, sd = {};
+    SHARE_SLIDERS.forEach((id, i) => { const v = readParamValue(id); if (v !== PARAM_DEFAULTS[id]) vd[i] = v; });
+    SHARE_TOGGLES.forEach((id, i) => { const v = isActive(id); if (v !== TOGGLE_DEFAULTS[id]) td[i] = v ? 1 : 0; });
+    SHARE_SELECTS.forEach((id, i) => { const v = document.getElementById(id).value; if (v !== SELECT_DEFAULTS[id]) sd[i] = v; });
+    if (!Object.keys(vd).length && !Object.keys(td).length && !Object.keys(sd).length) {
+        history.replaceState(null, '', location.pathname); return;
+    }
+    history.replaceState(null, '', `${location.pathname}?s=${btoa(JSON.stringify([vd, td, sd]))}`);
 }
 
 SHARE_SLIDERS.forEach(id => document.getElementById(id).addEventListener('input',  () => { updateUrl(); updateResetBtns(); }));
 SHARE_TOGGLES.forEach(id => document.getElementById(id).addEventListener('click',  () => { updateUrl(); updateResetBtns(); }));
 SHARE_SELECTS.forEach(id => document.getElementById(id).addEventListener('change', () => { updateUrl(); updateResetBtns(); }));
 
-if (INITIAL_PARAMS.size) {
-    SHARE_SLIDERS.forEach(id => {
-        if (!INITIAL_PARAMS.has(id)) return;
-        const el = document.getElementById(id);
-        el.value = INITIAL_PARAMS.get(id);
-        el.dispatchEvent(new Event('input'));
-    });
-    SHARE_TOGGLES.forEach(id => {
-        if (!INITIAL_PARAMS.has(id)) return;
-        const el   = document.getElementById(id);
-        const want = INITIAL_PARAMS.get(id) === '1';
-        if (isActive(id) !== want) el.click();
-    });
-    SHARE_SELECTS.forEach(id => {
-        if (!INITIAL_PARAMS.has(id)) return;
-        const el = document.getElementById(id);
-        el.value = INITIAL_PARAMS.get(id);
-        el.dispatchEvent(new Event('change'));
-    });
+// Load state from base64-encoded URL param
+const _raw = new URLSearchParams(location.search).get('s');
+if (_raw) {
+    try {
+        const [vd, td, sd] = JSON.parse(atob(_raw));
+        SHARE_SLIDERS.forEach((id, i) => { if (vd[i] != null) writeParamValue(id, vd[i]); });
+        SHARE_TOGGLES.forEach((id, i) => { if (td[i] != null && (td[i] === 1) !== isActive(id)) document.getElementById(id).click(); });
+        SHARE_SELECTS.forEach((id, i) => {
+            if (sd[i] != null) document.getElementById(id).value = sd[i];
+            document.getElementById(id).dispatchEvent(new Event('change'));
+        });
+    } catch (e) { /* invalid state, use defaults */ }
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────
