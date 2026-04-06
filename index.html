@@ -84,7 +84,7 @@
                 </div>
                 <div id="flow-vol-sigma" class="hidden flex items-center gap-1.5">
                     <span class="param-label w-[76px] flex-shrink-0">σ vol/yr</span>
-                    <input type="range" id="sl-flow-sigma" min="1" max="500" step="1" value="100" class="flex-1" style="accent-color:#5cb85c;">
+                    <input type="range" id="sl-flow-sigma" min="1" max="100" step="1" value="100" class="flex-1" style="accent-color:#5cb85c;">
                     <input type="number" class="num-input" id="num-flow-sigma" step="1" value="100">
                     <span class="text-[10px] text-[#444]">%</span>
                 </div>
@@ -140,7 +140,7 @@
                 </div>
                 <div id="yield-vol-sigma" class="hidden flex items-center gap-1.5">
                     <span class="param-label w-[76px] flex-shrink-0">σ vol/yr</span>
-                    <input type="range" id="sl-yield-sigma" min="1" max="500" step="1" value="100" class="flex-1" style="accent-color:#5c9ab8;">
+                    <input type="range" id="sl-yield-sigma" min="1" max="100" step="1" value="100" class="flex-1" style="accent-color:#5c9ab8;">
                     <input type="number" class="num-input" id="num-yield-sigma" step="1" value="100">
                     <span class="text-[10px] text-[#444]">%</span>
                 </div>
@@ -199,7 +199,7 @@
                 </div>
                 <div id="share-vol-sigma" class="hidden flex items-center gap-1.5">
                     <span class="param-label w-[76px] flex-shrink-0">σ vol/yr</span>
-                    <input type="range" id="sl-share-sigma" min="1" max="500" step="1" value="2" class="flex-1" style="accent-color:#9a6ab8;">
+                    <input type="range" id="sl-share-sigma" min="1" max="100" step="1" value="2" class="flex-1" style="accent-color:#9a6ab8;">
                     <input type="number" class="num-input" id="num-share-sigma" step="1" value="2">
                     <span class="text-[10px] text-[#444]">%</span>
                 </div>
@@ -243,8 +243,8 @@
                 <span class="text-[9px] uppercase tracking-[2px]"><span class="text-green">Collateral</span> <span class="text-[#444]">⇄</span> <span class="text-purple">ERC4626</span></span>
                 <div class="flex items-center gap-1.5">
                     <span class="w-[76px] flex-shrink-0"><span class="param-label" data-tip="Fee paid on DEX when rebalancing or opening a position.">DEX fee</span></span>
-                    <input type="range" id="sl-collateral-swap-fee" min="0" max="100" step="1" value="2" class="flex-1" style="accent-color:#5cb85c;">
-                    <input type="number" class="num-input" id="num-collateral-swap-fee" step="1" value="0.10">
+                    <input type="range" id="sl-collateral-swap-fee" min="0" max="100" step="1" value="15" class="flex-1" style="accent-color:#5cb85c;">
+                    <input type="number" class="num-input" id="num-collateral-swap-fee" step="1" value="1">
                     <span class="text-[10px] text-[#444] w-[28px]">%</span>
                 </div>
             </div>
@@ -253,8 +253,8 @@
                 <span class="text-[9px] uppercase tracking-[2px]"><span class="text-steel">Yield Token</span> <span class="text-[#444]">⇄</span> <span class="text-purple">ERC4626</span></span>
                 <div class="flex items-center gap-1.5">
                     <span class="w-[76px] flex-shrink-0"><span class="param-label" data-tip="Fee paid on DEX when rebalancing or opening a position.">DEX fee</span></span>
-                    <input type="range" id="sl-erc-swap-fee" min="0" max="100" step="1" value="2" class="flex-1" style="accent-color:#5c9ab8;">
-                    <input type="number" class="num-input" id="num-erc-swap-fee" step="1" value="0.10">
+                    <input type="range" id="sl-erc-swap-fee" min="0" max="100" step="1" value="15" class="flex-1" style="accent-color:#5c9ab8;">
+                    <input type="number" class="num-input" id="num-erc-swap-fee" step="1" value="1">
                     <span class="text-[10px] text-[#444]">%</span>
                 </div>
             </div>
@@ -263,8 +263,8 @@
                 <span class="text-[9px] text-steel uppercase tracking-[2px]">Yield Token</span>
                 <div class="flex items-center gap-1.5">
                     <span class="w-[76px] flex-shrink-0"><span class="param-label" data-tip="Annual interest on the borrowed yield tokens. Grows the debt balance over time.">Borrow fee</span></span>
-                    <input type="range" id="sl-borrow-fee" min="0" max="10" step="1" value="1" class="flex-1" style="accent-color:#5c9ab8;">
-                    <input type="number" class="num-input" id="num-borrow-fee" step="1" value="1">
+                    <input type="range" id="sl-borrow-fee" min="0" max="10" step="1" value="3" class="flex-1" style="accent-color:#5c9ab8;">
+                    <input type="number" class="num-input" id="num-borrow-fee" step="1" value="3">
                     <span class="text-[10px] text-[#444] w-[28px]">%</span>
                 </div>
             </div>
@@ -292,11 +292,19 @@
                     <span class="text-[9px] text-green uppercase tracking-[2px]">Collateral</span>
                     <button class="btn-toggle btn-toggle-flow active" id="btn-flow-rebalance">Rebalancer</button>
                 </div>
-                <div class="flex items-center gap-1.5" id="flow-rebalance-thresh">
-                    <span class="param-label w-[76px] flex-shrink-0">Threshold</span>
-                    <input type="range" id="sl-threshold-flow" min="1" max="20" step="1" value="5" class="flex-1" style="accent-color:#5cb85c;">
-                    <input type="number" class="num-input" id="num-threshold-flow" step="1" value="5">
-                    <span class="text-[10px] text-[#444] w-[28px]">%</span>
+                <div class="flex flex-col gap-1" id="flow-rebalance-thresh">
+                    <div class="flex items-center gap-1.5">
+                        <span class="param-label w-[76px] flex-shrink-0">Threshold ↑</span>
+                        <input type="range" id="sl-threshold-flow-up" min="1" max="20" step="1" value="5" class="flex-1" style="accent-color:#5cb85c;">
+                        <input type="number" class="num-input" id="num-threshold-flow-up" step="1" value="5">
+                        <span class="text-[10px] text-[#444] w-[28px]">%</span>
+                    </div>
+                    <div class="flex items-center gap-1.5">
+                        <span class="param-label w-[76px] flex-shrink-0">Threshold ↓</span>
+                        <input type="range" id="sl-threshold-flow-down" min="1" max="20" step="1" value="5" class="flex-1" style="accent-color:#5cb85c;">
+                        <input type="number" class="num-input" id="num-threshold-flow-down" step="1" value="5">
+                        <span class="text-[10px] text-[#444] w-[28px]">%</span>
+                    </div>
                 </div>
                 <div class="flex items-center gap-1.5">
                     <span class="param-label w-[76px] flex-shrink-0">Interval</span>
@@ -312,11 +320,19 @@
                     <span class="text-[9px] text-purple uppercase tracking-[2px]">ERC-4626</span>
                     <button class="btn-toggle btn-toggle-share active" id="btn-share-rebalance">Rebalancer</button>
                 </div>
-                <div class="flex items-center gap-1.5" id="erc-rebalance-thresh">
-                    <span class="param-label w-[76px] flex-shrink-0">Threshold</span>
-                    <input type="range" id="sl-threshold-erc" min="1" max="20" step="1" value="5" class="flex-1" style="accent-color:#9a6ab8;">
-                    <input type="number" class="num-input" id="num-threshold-erc" step="1" value="5">
-                    <span class="text-[10px] text-[#444] w-[28px]">%</span>
+                <div class="flex flex-col gap-1" id="erc-rebalance-thresh">
+                    <div class="flex items-center gap-1.5">
+                        <span class="param-label w-[76px] flex-shrink-0">Threshold ↑</span>
+                        <input type="range" id="sl-threshold-erc-up" min="1" max="20" step="1" value="5" class="flex-1" style="accent-color:#9a6ab8;">
+                        <input type="number" class="num-input" id="num-threshold-erc-up" step="1" value="5">
+                        <span class="text-[10px] text-[#444] w-[28px]">%</span>
+                    </div>
+                    <div class="flex items-center gap-1.5">
+                        <span class="param-label w-[76px] flex-shrink-0">Threshold ↓</span>
+                        <input type="range" id="sl-threshold-erc-down" min="1" max="20" step="1" value="20" class="flex-1" style="accent-color:#9a6ab8;">
+                        <input type="number" class="num-input" id="num-threshold-erc-down" step="1" value="100">
+                        <span class="text-[10px] text-[#444] w-[28px]">%</span>
+                    </div>
                 </div>
                 <div class="flex items-center gap-1.5">
                     <span class="param-label w-[76px] flex-shrink-0">Interval</span>
@@ -343,21 +359,24 @@
 
     <!-- Position value chart -->
     <div class="bg-surface border border-rim rounded-xl w-full max-w-[1400px] px-4 pt-2.5 pb-2">
-        <div class="flex justify-between items-center text-[10px] text-[#333] uppercase tracking-[2px] mb-1.5">
+        <div class="flex items-center text-[10px] text-[#333] uppercase tracking-[2px] mb-1.5">
             <div class="flex items-center gap-3">
                 <span>Position Value</span>
                 <button class="btn-play" id="btn-play" style="font-size:9px;padding:3px 12px;min-width:60px;">&#9654; Play</button>
                 <div class="flex items-center gap-1.5">
                     <span class="text-[9px] text-[#333] uppercase tracking-[1px]">Duration</span>
-                    <input type="range" id="sl-duration" min="1" max="3650" step="1" value="365" class="w-[80px]" style="accent-color:#5c9ab8;">
-                    <input type="number" class="num-input" id="num-duration" step="1" value="365">
+                    <input type="range" id="sl-duration" min="1" max="3650" step="1" value="30" class="w-[80px]" style="accent-color:#5c9ab8;">
+                    <input type="number" class="num-input" id="num-duration" step="1" value="30">
                     <span class="text-[10px] text-[#444]">d</span>
                 </div>
             </div>
-            <span class="flex items-baseline gap-3">
-                <span id="pos-yearly-pct" class="text-xs text-[#555] tracking-normal normal-case"></span>
+            <div class="flex-1"></div>
+            <div class="flex items-baseline gap-2">
                 <span id="position-val" class="text-base text-blue tracking-normal normal-case">$0.00</span>
-            </span>
+                <span id="pos-current-pct" class="text-xs text-[#555] tracking-normal normal-case"></span>
+                <span class="text-xs text-[#2a2a2a] tracking-normal normal-case">→</span>
+                <span id="pos-total-pct" class="text-xs text-[#444] tracking-normal normal-case"></span>
+            </div>
         </div>
         <div class="relative h-[120px]">
             <canvas id="position-chart"></canvas>

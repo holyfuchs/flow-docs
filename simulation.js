@@ -6,12 +6,14 @@
  * @param {number[]} sharePrices       - ERC4626 share price at each timestep
  * @param {object}   settings
  * @param {number}   settings.durationYears
- * @param {number}   settings.ltv                       - e.g. 0.90
- * @param {number}   settings.collateralThreshold       - e.g. 0.05
- * @param {number}   settings.ercThreshold              - e.g. 0.05
- * @param {number}   settings.collateralSwapFee         - e.g. 0.01
- * @param {number}   settings.ercSwapFee                - e.g. 0.01
- * @param {number}   settings.borrowFeeAnnual           - e.g. 0.05 (5 %/yr)
+ * @param {number}   settings.ltv                        - e.g. 0.90
+ * @param {number}   settings.collateralThresholdUp      - e.g. 0.05
+ * @param {number}   settings.collateralThresholdDown    - e.g. 0.05
+ * @param {number}   settings.ercThresholdUp             - e.g. 0.05
+ * @param {number}   settings.ercThresholdDown           - e.g. 0.05
+ * @param {number}   settings.collateralSwapFee          - e.g. 0.01
+ * @param {number}   settings.ercSwapFee                 - e.g. 0.01
+ * @param {number}   settings.borrowFeeAnnual            - e.g. 0.05 (5 %/yr)
  * @param {boolean}  settings.collateralRebalanceEnabled
  * @param {boolean}  settings.ercRebalanceEnabled
  *
@@ -28,8 +30,10 @@ export function runSimulation(collateralPrices, yieldAssetPrices, sharePrices, s
     const {
         durationYears,
         ltv,
-        collateralThreshold,
-        ercThreshold,
+        collateralThresholdUp,
+        collateralThresholdDown,
+        ercThresholdUp,
+        ercThresholdDown,
         collateralSwapFee,
         ercSwapFee,
         borrowFeeAnnual,
@@ -73,27 +77,36 @@ export function runSimulation(collateralPrices, yieldAssetPrices, sharePrices, s
         if (collateralRebalanceEnabled && t - lastCollateralRebalance >= collateralIntervalYears) {
             const targetYield = cvUsd * ltv / yp;
             const dev         = (targetYield - yieldLoan) / yieldLoan;
-            if (Math.abs(dev) >= collateralThreshold) {
+            if (dev >= collateralThresholdUp || dev <= -collateralThresholdDown) {
                 const yieldDiff = targetYield - yieldLoan;
                 yieldLoan   = targetYield;
                 sharesCount += yieldDiff > 0
-                    ? yieldDiff * (1 - ercSwapFee) / sp   // buying shares: pay swap fee
-                    : yieldDiff / sp;                      // selling shares: no fee
+                    ? yieldDiff * (1 - ercSwapFee) / sp          // buying shares: pay fee
+                    : yieldDiff / ((1 - ercSwapFee) * sp);       // selling shares: pay fee (need more shares)
                 collateralRebalanceTimes.push(t);
                 lastCollateralRebalance = t;
             }
         }
 
-        // ERC4626 rebalance: sell excess shares → collateral (collateralSwapFee)
+        // ERC4626 rebalance: rebalance shares to match loan
         if (ercRebalanceEnabled && t - lastErcRebalance >= ercIntervalYears) {
             const yieldHeld = sharesCount * sp;
             const dev       = (yieldHeld - yieldLoan) / yieldLoan;
-            if (dev >= ercThreshold) {
+            if (dev >= ercThresholdUp) {
+                // Excess shares → sell into collateral
                 const excessYield  = yieldHeld - yieldLoan;
                 sharesCount        = yieldLoan / sp;
                 collateralAmount  += excessYield * yp * (1 - collateralSwapFee) / cp;
                 ercRebalanceTimes.push(t);
                 lastErcRebalance = t;
+            } else if (dev <= -ercThresholdDown) {
+                // Shares deficit → sell collateral to buy more shares
+                // RIGHT NOW NOT IMPLEMENTED!
+                // const shortfall   = yieldLoan - yieldHeld;
+                // sharesCount       = yieldLoan / sp;
+                // collateralAmount -= shortfall * yp * (1 + collateralSwapFee) / cp;
+                // ercRebalanceTimes.push(t);
+                // lastErcRebalance = t;
             }
         }
 

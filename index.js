@@ -30,8 +30,10 @@ function gatherSettings() {
     return {
         durationYears:              durationYears(),
         ltv:                        numVal('num-ltv') / 100,
-        collateralThreshold:        numVal('num-threshold-flow') / 100,
-        ercThreshold:               numVal('num-threshold-erc')  / 100,
+        collateralThresholdUp:      numVal('num-threshold-flow-up')   / 100,
+        collateralThresholdDown:    numVal('num-threshold-flow-down') / 100,
+        ercThresholdUp:             numVal('num-threshold-erc-up')    / 100,
+        ercThresholdDown:           numVal('num-threshold-erc-down')  / 100,
         collateralSwapFee:          numVal('num-collateral-swap-fee') / 100,
         ercSwapFee:                 numVal('num-erc-swap-fee') / 100,
         borrowFeeAnnual:            numVal('num-borrow-fee') / 100,
@@ -191,10 +193,11 @@ function updateThresholdLines() {
     const i       = Math.min(Math.floor(playIdx), N_POINTS - 1);
     const yp      = priceArrays.yield[i];
     const ltv     = numVal('num-ltv') / 100;
-    const thresh  = numVal('num-threshold-flow') / 100;
+    const threshUp   = numVal('num-threshold-flow-up')   / 100;
+    const threshDown = numVal('num-threshold-flow-down') / 100;
     const debtUsd = simResult.yieldTokenValues[i];
-    const upper   = (debtUsd * (1 + thresh)) / ltv;
-    const lower   = (debtUsd * (1 - thresh)) / ltv;
+    const upper   = (debtUsd * (1 + threshUp))   / ltv;
+    const lower   = (debtUsd * (1 - threshDown)) / ltv;
 
     document.getElementById('threshold-line-upper').style.left   = Math.min(upper / CHART_MAX * 100, 100) + '%';
     document.getElementById('threshold-label-upper').style.left  = Math.min(upper / CHART_MAX * 100, 100) + '%';
@@ -207,19 +210,20 @@ function updateThresholdLines() {
 function updateERC4626ThresholdLines() {
     if (!simResult) return;
     const i       = Math.min(Math.floor(playIdx), N_POINTS - 1);
-    const thresh  = numVal('num-threshold-erc') / 100;
+    const threshUp   = numVal('num-threshold-erc-up')   / 100;
+    const threshDown = numVal('num-threshold-erc-down') / 100;
     const debtUsd = simResult.yieldTokenValues[i];
     const cvUsd   = simResult.collateralValues[i];
     const barStart = Math.max(cvUsd - debtUsd, 0);
-    const upper    = (barStart + debtUsd * (1 + thresh)) / CHART_MAX * 100;
-    const lower    = (barStart + debtUsd * (1 - thresh)) / CHART_MAX * 100;
+    const upper    = (barStart + debtUsd * (1 + threshUp))   / CHART_MAX * 100;
+    const lower    = (barStart + debtUsd * (1 - threshDown)) / CHART_MAX * 100;
 
     document.getElementById('threshold-line-erc-upper').style.left  = Math.min(upper, 100) + '%';
     document.getElementById('threshold-label-erc-upper').style.left = Math.min(upper, 100) + '%';
-    document.getElementById('threshold-label-erc-upper').textContent = usdInt(debtUsd * (1 + thresh));
+    document.getElementById('threshold-label-erc-upper').textContent = usdInt(debtUsd * (1 + threshUp));
     document.getElementById('threshold-line-erc-lower').style.left  = Math.max(lower, 0)  + '%';
     document.getElementById('threshold-label-erc-lower').style.left = Math.max(lower, 0)  + '%';
-    document.getElementById('threshold-label-erc-lower').textContent = usdInt(debtUsd * (1 - thresh));
+    document.getElementById('threshold-label-erc-lower').textContent = usdInt(debtUsd * (1 - threshDown));
 }
 
 // ── Price history chart ───────────────────────────────────────────────
@@ -412,10 +416,17 @@ function renderFrame(i) {
 
     // Position value display
     document.getElementById('position-val').textContent = usd(posUsd);
-    const yearlyPctEl = document.getElementById('pos-yearly-pct');
-    const totalReturn = (posUsd / simResult.positionValues[0] - 1) * 100;
-    yearlyPctEl.textContent = (totalReturn >= 0 ? '+' : '') + totalReturn.toFixed(1) + '%';
-    yearlyPctEl.style.color = totalReturn >= 0 ? '#5cb85c' : '#d9534f';
+
+    const fmt = (pct, el) => {
+        el.textContent = (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%';
+        el.style.color = pct >= 0 ? '#5cb85c' : '#d9534f';
+    };
+
+    const currentReturn = (posUsd / simResult.positionValues[0] - 1) * 100;
+    fmt(currentReturn, document.getElementById('pos-current-pct'));
+
+    const finalReturn = (simResult.positionValues[N_POINTS - 1] / simResult.positionValues[0] - 1) * 100;
+    fmt(finalReturn, document.getElementById('pos-total-pct'));
 
     // Position chart: show full precomputed trace, cursor draws the current position
     if (positionChart.data.datasets[0].data.length !== N_POINTS) {
@@ -545,24 +556,17 @@ document.getElementById('sl-ltv').addEventListener('input', e => {
     recompute();
 });
 
-document.getElementById('sl-threshold-flow').addEventListener('input', e => {
-    document.getElementById('num-threshold-flow').value = parseInt(e.target.value);
-    recompute();
-});
-document.getElementById('num-threshold-flow').addEventListener('change', e => {
-    const v = parseInt(e.target.value);
-    if (!isNaN(v)) document.getElementById('sl-threshold-flow').value = Math.min(20, Math.max(1, v));
-    recompute(); updateUrl(); updateResetBtns();
-});
-
-document.getElementById('sl-threshold-erc').addEventListener('input', e => {
-    document.getElementById('num-threshold-erc').value = parseInt(e.target.value);
-    recompute();
-});
-document.getElementById('num-threshold-erc').addEventListener('change', e => {
-    const v = parseInt(e.target.value);
-    if (!isNaN(v)) document.getElementById('sl-threshold-erc').value = Math.min(20, Math.max(1, v));
-    recompute(); updateUrl(); updateResetBtns();
+['sl-threshold-flow-up','sl-threshold-flow-down','sl-threshold-erc-up','sl-threshold-erc-down'].forEach(slId => {
+    const numId = slId.replace('sl-', 'num-');
+    document.getElementById(slId).addEventListener('input', e => {
+        document.getElementById(numId).value = parseInt(e.target.value);
+        recompute();
+    });
+    document.getElementById(numId).addEventListener('change', e => {
+        const v = parseInt(e.target.value);
+        if (!isNaN(v)) document.getElementById(slId).value = Math.min(20, Math.max(1, v));
+        recompute(); updateUrl(); updateResetBtns();
+    });
 });
 
 document.getElementById('sl-interval-flow').addEventListener('input', e => {
@@ -655,7 +659,8 @@ setupToggle('btn-erc-per-yield', () => { updatePriceChart(); });
 
 setupToggle('btn-flow-rebalance', active => {
     document.getElementById('flow-rebalance-thresh').classList.toggle('dimmed', !active);
-    document.getElementById('sl-threshold-flow').disabled = !active;
+    document.getElementById('sl-threshold-flow-up').disabled   = !active;
+    document.getElementById('sl-threshold-flow-down').disabled = !active;
     document.getElementById('sl-interval-flow').disabled  = !active;
     document.getElementById('num-interval-flow').disabled = !active;
     document.getElementById('num-interval-flow').closest('.flex').classList.toggle('dimmed', !active);
@@ -663,7 +668,8 @@ setupToggle('btn-flow-rebalance', active => {
 });
 setupToggle('btn-share-rebalance', active => {
     document.getElementById('erc-rebalance-thresh').classList.toggle('dimmed', !active);
-    document.getElementById('sl-threshold-erc').disabled  = !active;
+    document.getElementById('sl-threshold-erc-up').disabled   = !active;
+    document.getElementById('sl-threshold-erc-down').disabled = !active;
     document.getElementById('sl-interval-erc').disabled   = !active;
     document.getElementById('num-interval-erc').disabled  = !active;
     document.getElementById('num-interval-erc').closest('.flex').classList.toggle('dimmed', !active);
@@ -678,9 +684,9 @@ window.__resizePriceChart = () => {
 };
 
 // ── URL sharing ───────────────────────────────────────────────────────
-const SHARE_SLIDERS = ['sl-duration','sl-drift','sl-threshold-flow','sl-collateral-swap-fee','sl-period','sl-velocity',
+const SHARE_SLIDERS = ['sl-duration','sl-drift','sl-threshold-flow-up','sl-threshold-flow-down','sl-collateral-swap-fee','sl-period','sl-velocity',
                        'sl-yield-drift','sl-borrow-fee','sl-ltv','sl-yield-period','sl-yield-velocity',
-                       'sl-share-drift','sl-threshold-erc','sl-erc-swap-fee','sl-share-period','sl-share-velocity',
+                       'sl-share-drift','sl-threshold-erc-up','sl-threshold-erc-down','sl-erc-swap-fee','sl-share-period','sl-share-velocity',
                        'sl-interval-flow','sl-interval-erc',
                        'sl-flow-sigma','sl-flow-lambda','sl-flow-jump',
                        'sl-yield-sigma','sl-yield-lambda','sl-yield-jump',
@@ -694,7 +700,7 @@ const SLIDER_DEFAULTS = Object.fromEntries(SHARE_SLIDERS.map(id => [id, document
 const TOGGLE_DEFAULTS = Object.fromEntries(SHARE_TOGGLES.map(id => [id, isActive(id)]));
 const SELECT_DEFAULTS = Object.fromEntries(SHARE_SELECTS.map(id => [id, document.getElementById(id).value]));
 
-const PROTOCOL_SLIDERS   = ['sl-threshold-flow', 'sl-threshold-erc', 'sl-interval-flow', 'sl-interval-erc', 'sl-ltv'];
+const PROTOCOL_SLIDERS   = ['sl-threshold-flow-up', 'sl-threshold-flow-down', 'sl-threshold-erc-up', 'sl-threshold-erc-down', 'sl-interval-flow', 'sl-interval-erc', 'sl-ltv'];
 const PROTOCOL_TOGGLES   = ['btn-flow-rebalance', 'btn-share-rebalance'];
 const PRICE_DATA_SLIDERS = ['sl-drift','sl-period','sl-velocity','sl-yield-drift','sl-yield-period','sl-yield-velocity','sl-share-drift','sl-share-period','sl-share-velocity','sl-flow-seed','sl-yield-seed','sl-share-seed'];
 const PRICE_DATA_SELECTS = ['sel-flow-vol','sel-yield-vol','sel-share-vol'];
