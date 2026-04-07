@@ -17,6 +17,7 @@
  * @param {number}   settings.borrowFeeAnnual                - e.g. 0.05 (5 %/yr)
  * @param {boolean}  settings.collateralRebalanceEnabled
  * @param {boolean}  settings.yieldTokenRebalanceEnabled
+
  *
  * @returns {{
  *   collateralValues:         number[],   // collateral position USD value at each step
@@ -41,15 +42,13 @@ export function runSimulation(collateralPrices, debtTokenPrices, yieldTokenPrice
         borrowFeeAnnual,
         collateralRebalanceEnabled,
         yieldTokenRebalanceEnabled,
-        collateralIntervalMinutes  = 0,
-        yieldTokenIntervalMinutes  = 0,
     } = settings;
 
     const n       = collateralPrices.length;
     const dtYears = durationYears / (n - 1);
 
     let collateralAmount = 100;
-    let debtLoan         = collateralAmount * collateralPrices[0] * ltvUp;  // initial loan at ltvUp
+    let debtLoan         = collateralAmount * collateralPrices[0] * ((ltvUp + ltvDown) / 2);  // initial loan at avg LTV
     let sharesCount      = debtLoan * (1 - yieldTokenSwapFee) / yieldTokenPrices[0];  // Yield Token share units
 
     const collateralValues         = new Array(n);
@@ -59,10 +58,6 @@ export function runSimulation(collateralPrices, debtTokenPrices, yieldTokenPrice
     const collateralRebalanceTimes = [];
     const yieldTokenRebalanceTimes = [];
 
-    const collateralIntervalYears  = collateralIntervalMinutes  / (365.25 * 24 * 60);
-    const yieldTokenIntervalYears  = yieldTokenIntervalMinutes  / (365.25 * 24 * 60);
-    let lastCollateralRebalance    = -Infinity;
-    let lastYieldTokenRebalance    = -Infinity;
 
     for (let i = 0; i < n; i++) {
         const t   = i * dtYears;
@@ -76,7 +71,7 @@ export function runSimulation(collateralPrices, debtTokenPrices, yieldTokenPrice
         const cvUsd = collateralAmount * cp;
 
         // Collateral rebalance: bring loan back to cv * ltv
-        if (collateralRebalanceEnabled && t - lastCollateralRebalance >= collateralIntervalYears) {
+        if (collateralRebalanceEnabled) {
             // Use ltvUp when increasing loan (collateral up), ltvDown when decreasing (collateral down)
             const targetUp   = cvUsd * ltvUp   / dtp;
             const targetDown = cvUsd * ltvDown  / dtp;
@@ -90,12 +85,11 @@ export function runSimulation(collateralPrices, debtTokenPrices, yieldTokenPrice
                     ? debtDiff * (1 - yieldTokenSwapFee) / ytp          // buying shares: pay fee
                     : debtDiff / ((1 - yieldTokenSwapFee) * ytp);       // selling shares: pay fee
                 collateralRebalanceTimes.push(t);
-                lastCollateralRebalance = t;
             }
         }
 
         // Yield Token rebalance: rebalance shares to match loan
-        if (yieldTokenRebalanceEnabled && t - lastYieldTokenRebalance >= yieldTokenIntervalYears) {
+        if (yieldTokenRebalanceEnabled) {
             const yieldTokenHeld = sharesCount * ytp;
             const dev            = (yieldTokenHeld - debtLoan) / debtLoan;
             if (dev >= yieldTokenThresholdUp) {
@@ -104,14 +98,12 @@ export function runSimulation(collateralPrices, debtTokenPrices, yieldTokenPrice
                 sharesCount       = debtLoan / ytp;
                 collateralAmount += excess * dtp * (1 - collateralSwapFee) / cp;
                 yieldTokenRebalanceTimes.push(t);
-                lastYieldTokenRebalance = t;
             } else if (dev <= -yieldTokenThresholdDown) {
                 // Shares deficit → sell collateral to buy more shares
                 const shortfall   = debtLoan - yieldTokenHeld;
                 sharesCount       = debtLoan / ytp;
                 collateralAmount -= shortfall * dtp * (1 + collateralSwapFee) / cp;
                 yieldTokenRebalanceTimes.push(t);
-                lastYieldTokenRebalance = t;
             }
         }
 

@@ -44,8 +44,6 @@ function gatherSettings() {
         borrowFeeAnnual:            numVal('num-borrow-fee') / 100,
         collateralRebalanceEnabled: isActive('btn-flow-rebalance'),
         yieldTokenRebalanceEnabled: isActive('btn-share-rebalance'),
-        collateralIntervalMinutes:  numVal('num-interval-flow'),
-        yieldTokenIntervalMinutes:  numVal('num-interval-erc'),
     };
 }
 
@@ -595,24 +593,6 @@ function syncPriceControl(slId, numId, fmt) {
     });
 });
 
-document.getElementById('sl-interval-flow').addEventListener('input', e => {
-    document.getElementById('num-interval-flow').value = parseInt(e.target.value);
-    recompute();
-});
-document.getElementById('num-interval-flow').addEventListener('change', e => {
-    const v = parseInt(e.target.value);
-    if (!isNaN(v)) document.getElementById('sl-interval-flow').value = Math.min(120, Math.max(1, v));
-    recompute(); updateUrl(); updateResetBtns();
-});
-document.getElementById('sl-interval-erc').addEventListener('input', e => {
-    document.getElementById('num-interval-erc').value = parseInt(e.target.value);
-    recompute();
-});
-document.getElementById('num-interval-erc').addEventListener('change', e => {
-    const v = parseInt(e.target.value);
-    if (!isNaN(v)) document.getElementById('sl-interval-erc').value = Math.min(120, Math.max(1, v));
-    recompute(); updateUrl(); updateResetBtns();
-});
 
 syncFeeSlider('sl-collateral-swap-fee', 'num-collateral-swap-fee', () => { recompute(); updateResetBtns(); });
 syncFeeSlider('sl-erc-swap-fee',        'num-erc-swap-fee',        () => { recompute(); updateResetBtns(); });
@@ -698,18 +678,12 @@ setupToggle('btn-flow-rebalance', active => {
     document.getElementById('flow-rebalance-thresh').classList.toggle('dimmed', !active);
     document.getElementById('sl-threshold-flow-up').disabled   = !active;
     document.getElementById('sl-threshold-flow-down').disabled = !active;
-    document.getElementById('sl-interval-flow').disabled  = !active;
-    document.getElementById('num-interval-flow').disabled = !active;
-    document.getElementById('num-interval-flow').closest('.flex').classList.toggle('dimmed', !active);
     recompute();
 });
 setupToggle('btn-share-rebalance', active => {
     document.getElementById('erc-rebalance-thresh').classList.toggle('dimmed', !active);
     document.getElementById('sl-threshold-erc-up').disabled   = !active;
     document.getElementById('sl-threshold-erc-down').disabled = !active;
-    document.getElementById('sl-interval-erc').disabled   = !active;
-    document.getElementById('num-interval-erc').disabled  = !active;
-    document.getElementById('num-interval-erc').closest('.flex').classList.toggle('dimmed', !active);
     recompute();
 });
 
@@ -724,7 +698,6 @@ window.__resizePriceChart = () => {
 const SHARE_SLIDERS = ['sl-duration','sl-drift','sl-threshold-flow-up','sl-threshold-flow-down','sl-collateral-swap-fee','sl-period','sl-velocity',
                        'sl-yield-drift','sl-borrow-fee','sl-ltv-up','sl-ltv-down','sl-yield-period','sl-yield-velocity',
                        'sl-share-drift','sl-threshold-erc-up','sl-threshold-erc-down','sl-erc-swap-fee','sl-share-period','sl-share-velocity',
-                       'sl-interval-flow','sl-interval-erc',
                        'sl-flow-sigma','sl-flow-lambda','sl-flow-jump',
                        'sl-yield-sigma','sl-yield-lambda','sl-yield-jump',
                        'sl-share-sigma','sl-share-lambda','sl-share-jump',
@@ -733,7 +706,7 @@ const SHARE_SLIDERS = ['sl-duration','sl-drift','sl-threshold-flow-up','sl-thres
 const SHARE_TOGGLES = ['btn-flow-rebalance','btn-share-rebalance'];
 const SHARE_SELECTS = ['sel-flow-vol','sel-yield-vol','sel-share-vol'];
 
-const PROTOCOL_SLIDERS   = ['sl-threshold-flow-up', 'sl-threshold-flow-down', 'sl-threshold-erc-up', 'sl-threshold-erc-down', 'sl-interval-flow', 'sl-interval-erc', 'sl-ltv-up', 'sl-ltv-down'];
+const PROTOCOL_SLIDERS   = ['sl-threshold-flow-up', 'sl-threshold-flow-down', 'sl-threshold-erc-up', 'sl-threshold-erc-down', 'sl-ltv-up', 'sl-ltv-down'];
 const PROTOCOL_TOGGLES   = ['btn-flow-rebalance', 'btn-share-rebalance'];
 const PRICE_DATA_SLIDERS = ['sl-drift','sl-period','sl-velocity','sl-yield-drift','sl-yield-period','sl-yield-velocity','sl-share-drift','sl-share-period','sl-share-velocity','sl-flow-seed','sl-yield-seed','sl-share-seed'];
 const PRICE_DATA_SELECTS = ['sel-flow-vol','sel-yield-vol','sel-share-vol'];
@@ -769,6 +742,270 @@ function isAtDefaults(sliderIds, selectIds = [], toggleIds = []) {
         && selectIds.every(id => document.getElementById(id).value === SELECT_DEFAULTS[id])
         && toggleIds.every(id => isActive(id) === TOGGLE_DEFAULTS[id]);
 }
+
+// ── Protocol optimizer ────────────────────────────────────────────────
+function hasRandomVol(volType) {
+    return volType === 'gbm' || volType === 'jump' || volType === 'history-flow' || volType === 'history-eth';
+}
+function isHistoryVol(volType) {
+    return volType === 'history-flow' || volType === 'history-eth';
+}
+
+function generatePriceArraysForRun(runIdx) {
+    const dur    = durationYears();
+    const dt     = dur / (N_POINTS - 1);
+    const times  = Array.from({ length: N_POINTS }, (_, i) => i * dt);
+    const stride = Math.round(dur * 365.25);
+
+    const flowVol  = document.getElementById('sel-flow-vol').value;
+    const yieldVol = document.getElementById('sel-yield-vol').value;
+    const shareVol = document.getElementById('sel-share-vol').value;
+
+    function seedFor(vol, base)   { return hasRandomVol(vol) && !isHistoryVol(vol) ? base + runIdx : base; }
+    function offsetFor(vol, base) { return isHistoryVol(vol) ? base + runIdx * stride : base; }
+
+    const collateral = genSeries(numVal('num-drift') / 100, flowVol, {
+        period: numVal('num-period') / 365.25, ampl: numVal('num-velocity') / 100,
+        sigma: numVal('num-flow-sigma') / 100, lambda: numVal('num-flow-lambda'),
+        jumpSize: numVal('num-flow-jump') / 100,
+        historyOffset: offsetFor(flowVol, numVal('num-flow-history-offset')),
+    }, N_POINTS, dt, seedFor(flowVol, parseInt(document.getElementById('sl-flow-seed').value) || 1));
+
+    const debtToken = genSeries(numVal('num-yield-drift') / 100, yieldVol, {
+        period: numVal('num-yield-period') / 365.25, ampl: numVal('num-yield-velocity') / 100,
+        sigma: numVal('num-yield-sigma') / 100, lambda: numVal('num-yield-lambda'),
+        jumpSize: numVal('num-yield-jump') / 100,
+        historyOffset: offsetFor(yieldVol, numVal('num-yield-history-offset')),
+    }, N_POINTS, dt, seedFor(yieldVol, parseInt(document.getElementById('sl-yield-seed').value) || 1));
+
+    const yieldToken = genSeries(numVal('num-share-drift') / 100, shareVol, {
+        period: numVal('num-share-period') / 365.25, ampl: numVal('num-share-velocity') / 100,
+        sigma: numVal('num-share-sigma') / 100, lambda: numVal('num-share-lambda'),
+        jumpSize: numVal('num-share-jump') / 100,
+        historyOffset: offsetFor(shareVol, numVal('num-share-history-offset')),
+    }, N_POINTS, dt, seedFor(shareVol, parseInt(document.getElementById('sl-share-seed').value) || 1));
+
+    return { collateral, debtToken, yieldToken, times };
+}
+
+async function runOptimize(opts) {
+    const btn = document.getElementById('opt-run-btn');
+    btn.textContent = '...';
+    btn.disabled = true;
+    const progressWrap = document.getElementById('opt-progress-wrap');
+    const progressBar  = document.getElementById('opt-progress-bar');
+    const progressLabel= document.getElementById('opt-progress-label');
+    progressWrap.style.display = 'flex';
+    progressBar.style.width = '0%';
+
+    await new Promise(r => setTimeout(r, 10));
+    {
+        const base = gatherSettings();
+        const { borrowFeeAnnual, collateralSwapFee, yieldTokenSwapFee } = base;
+        const numRuns = opts.numRuns;
+
+        function simOnArrays(coll, debt, yield_, lU, lD, ctU, ctD, ytU, ytD) {
+            const n = coll.length;
+            const dtYears = base.durationYears / (n - 1);
+            let ca = 100, debtLoan = ca * coll[0] * ((lU + lD) / 2);
+            let shares = debtLoan * (1 - yieldTokenSwapFee) / yield_[0];
+            for (let i = 0; i < n; i++) {
+                const cp = coll[i], dtp = debt[i], ytp = yield_[i];
+                if (i > 0) debtLoan *= (1 + borrowFeeAnnual * dtYears);
+                const cv = ca * cp;
+                const tU = cv * lU / dtp, tD = cv * lD / dtp;
+                const dU = (tU - debtLoan) / debtLoan, dD = (tD - debtLoan) / debtLoan;
+                if (dU >= ctU || dD <= -ctD) {
+                    const diff = (dU >= ctU ? tU : tD) - debtLoan;
+                    debtLoan += diff;
+                    shares += diff > 0 ? diff * (1 - yieldTokenSwapFee) / ytp : diff / ((1 - yieldTokenSwapFee) * ytp);
+                }
+                const held = shares * ytp, dev = (held - debtLoan) / debtLoan;
+                if (dev >= ytU) {
+                    ca += (held - debtLoan) * dtp * (1 - collateralSwapFee) / cp; shares = debtLoan / ytp;
+                } else if (dev <= -ytD) {
+                    ca -= (debtLoan - held) * dtp * (1 + collateralSwapFee) / cp; shares = debtLoan / ytp;
+                }
+            }
+            const last = n - 1;
+            const cp = coll[last], dtp = debt[last], ytp = yield_[last];
+            const debtFromYield = shares * ytp * (1 - yieldTokenSwapFee);
+            const netDebt = debtFromYield - debtLoan;
+            return netDebt >= 0
+                ? ca + netDebt * dtp * (1 - collateralSwapFee) / cp
+                : ca + netDebt * dtp * (1 + collateralSwapFee) / cp;
+        }
+
+        const T  = [0.01, 0.03, 0.05, 0.08, 0.12, 0.18, 0.20, 0.30, 0.40, 0.50, 1.00, 10.00];
+        const YT = [0.01, 0.05, 0.10, 0.20];
+        const L  = [...[0.20, 0.25, 0.30, 0.35, 0.40, 0.45], ...Array.from({ length: 46 }, (_, i) => (50 + i) / 100)];  // 0.20 – 0.95
+        const shareVolFlat  = document.getElementById('sel-share-vol').value === 'none';
+        const sharePositive = numVal('num-share-drift') >= 0;
+
+        const lUVals  = opts.ltvUp     ? L  : [base.ltvUp];
+        const lDVals  = opts.ltvDown   ? L  : [base.ltvDown];
+        const ctUVals = opts.collUp    ? T  : [base.collateralThresholdUp];
+        const ctDVals = opts.collDown  ? T  : [base.collateralThresholdDown];
+        const ytUVals = !opts.yieldUp  ? [base.yieldTokenThresholdUp]  : (shareVolFlat && !sharePositive) ? [0.20] : YT;
+        const ytDVals = !opts.yieldDown? [base.yieldTokenThresholdDown] : (shareVolFlat &&  sharePositive) ? [0.20] : YT;
+
+        const minLtv = (parseInt(document.getElementById('opt-min-ltv').value) || 90) / 100;
+
+        // Build combos — enforce lD > lU and lD + ctD <= minLtv
+        const combos = [];
+        for (const lU of lUVals) for (const lD of lDVals)
+        for (const ctU of ctUVals) for (const ctD of ctDVals)
+        for (const ytU of ytUVals) for (const ytD of ytDVals) {
+            if (lD <= lU) continue;
+            if (lD + ctD > minLtv) continue;
+            combos.push({ lU, lD, ctU, ctD, ytU, ytD });
+        }
+
+        const totals = new Float64Array(combos.length);
+
+        for (let r = 0; r < numRuns; r++) {
+            const { collateral, debtToken, yieldToken } = generatePriceArraysForRun(r);
+            combos.forEach((c, i) => {
+                totals[i] += simOnArrays(collateral, debtToken, yieldToken, c.lU, c.lD, c.ctU, c.ctD, c.ytU, c.ytD);
+            });
+            progressBar.style.width  = ((r + 1) / numRuns * 100).toFixed(1) + '%';
+            progressLabel.textContent = `Path ${r + 1} / ${numRuns}`;
+            await new Promise(res => setTimeout(res, 0));
+        }
+
+        const allResults = combos.map((c, i) => ({ ...c, score: totals[i] / numRuns }));
+        allResults.sort((a, b) => b.score - a.score);
+        const best = allResults[0];
+
+        // Compute default settings score averaged over same price paths
+        // Always uses hardcoded defaults (HTML initial values), not current selection
+        const DEFAULT = { ltvUp: 0.80, ltvDown: 0.80, ctUp: 0.05, ctDown: 0.05, ytUp: 0.05, ytDown: 0.05 };
+        let defaultTotal = 0;
+        for (let r = 0; r < numRuns; r++) {
+            const { collateral, debtToken, yieldToken } = generatePriceArraysForRun(r);
+            defaultTotal += simOnArrays(collateral, debtToken, yieldToken,
+                DEFAULT.ltvUp, DEFAULT.ltvDown,
+                DEFAULT.ctUp, DEFAULT.ctDown,
+                DEFAULT.ytUp, DEFAULT.ytDown);
+        }
+        const defaultScore = defaultTotal / numRuns;
+
+        // Ensure rebalancers are on
+        if (!isActive('btn-flow-rebalance'))  document.getElementById('btn-flow-rebalance').click();
+        if (!isActive('btn-share-rebalance')) document.getElementById('btn-share-rebalance').click();
+
+        // Apply best settings to DOM
+        writeParamValue('sl-ltv-up',              Math.round(best.lU  * 100));
+        writeParamValue('sl-ltv-down',            Math.round(best.lD  * 100));
+        writeParamValue('sl-threshold-flow-up',   Math.round(best.ctU * 100));
+        writeParamValue('sl-threshold-flow-down', Math.round(best.ctD * 100));
+        writeParamValue('sl-threshold-erc-up',    Math.round(best.ytU * 100));
+        writeParamValue('sl-threshold-erc-down',  Math.round(best.ytD * 100));
+
+        try {
+            localStorage.setItem('optimize_results', JSON.stringify({
+                results: allResults.slice(0, 1000),
+                totalRuns: allResults.length,
+                numPricePaths: numRuns,
+                defaultScore,
+            }));
+            window.open('results.html', '_blank');
+        } catch (e) {
+            console.warn('localStorage quota exceeded, trimming results');
+            localStorage.setItem('optimize_results', JSON.stringify({
+                results: allResults.slice(0, 100),
+                totalRuns: allResults.length,
+                numPricePaths: numRuns,
+            }));
+            window.open('results.html', '_blank');
+        }
+
+        recompute(); updateUrl(); updateResetBtns();
+        btn.textContent = '⚙ Run';
+        btn.disabled = false;
+        progressWrap.style.display = 'none';
+        document.getElementById('optimize-dialog').style.display = 'none';
+    }
+}
+
+// ── Combo counter ─────────────────────────────────────────────────────
+function countOptCombos() {
+    const T  = [0.01, 0.03, 0.05, 0.08, 0.12, 0.18];
+    const YT = [0.01, 0.05, 0.10, 0.20];
+    const L  = Array.from({ length: 46 }, (_, i) => (50 + i) / 100);
+    const base    = gatherSettings();
+    const minLtv  = (parseInt(document.getElementById('opt-min-ltv').value) || 90) / 100;
+    const shareVolFlat  = document.getElementById('sel-share-vol').value === 'none';
+    const sharePositive = numVal('num-share-drift') >= 0;
+    const ltvUp    = document.getElementById('opt-ltv-up').checked;
+    const ltvDown  = document.getElementById('opt-ltv-down').checked;
+    const collUp   = document.getElementById('opt-coll-up').checked;
+    const collDown = document.getElementById('opt-coll-down').checked;
+    const yieldUp  = document.getElementById('opt-yield-up').checked;
+    const yieldDown= document.getElementById('opt-yield-down').checked;
+    const lUVals  = ltvUp    ? L  : [base.ltvUp];
+    const lDVals  = ltvDown  ? L  : [base.ltvDown];
+    const ctUVals = collUp   ? T  : [base.collateralThresholdUp];
+    const ctDVals = collDown ? T  : [base.collateralThresholdDown];
+    const ytUVals = !yieldUp  ? [base.yieldTokenThresholdUp]  : (shareVolFlat && !sharePositive) ? [0.20] : YT;
+    const ytDVals = !yieldDown? [base.yieldTokenThresholdDown] : (shareVolFlat &&  sharePositive) ? [0.20] : YT;
+    let count = 0;
+    for (const lU of lUVals) for (const lD of lDVals)
+    for (const ctU of ctUVals) for (const ctD of ctDVals)
+    for (const ytU of ytUVals) for (const ytD of ytDVals) {
+        if (lD <= lU) continue;
+        if (lD + ctD > minLtv) continue;
+        count++;
+    }
+    const runs = parseInt(document.getElementById('opt-runs').value) || 1;
+    const flowVol  = document.getElementById('sel-flow-vol').value;
+    const yieldVol = document.getElementById('sel-yield-vol').value;
+    const shareVol = document.getElementById('sel-share-vol').value;
+    const hasRandom = hasRandomVol(flowVol) || hasRandomVol(yieldVol) || hasRandomVol(shareVol);
+    const paths = hasRandom ? runs : 1;
+    document.getElementById('opt-combo-count').textContent =
+        `${count.toLocaleString()} combos × ${paths} path${paths > 1 ? 's' : ''} = ${(count * paths).toLocaleString()} simulations`;
+}
+
+// Dialog open/close
+document.getElementById('btn-optimize').addEventListener('click', e => {
+    e.stopPropagation();
+    const flowVol  = document.getElementById('sel-flow-vol').value;
+    const yieldVol = document.getElementById('sel-yield-vol').value;
+    const shareVol = document.getElementById('sel-share-vol').value;
+    const hasRandom = hasRandomVol(flowVol) || hasRandomVol(yieldVol) || hasRandomVol(shareVol);
+    const runsRow = document.getElementById('opt-runs-row');
+    runsRow.style.display = hasRandom ? 'flex' : 'none';
+    const hint = document.getElementById('opt-runs-hint');
+    if (hasRandom) {
+        const types = [flowVol, yieldVol, shareVol].filter(isHistoryVol).length > 0 ? 'history offsets' : 'seeds';
+        hint.textContent = `different ${types} per run`;
+    }
+    document.getElementById('optimize-dialog').style.display = 'flex';
+    countOptCombos();
+});
+document.getElementById('optimize-dialog').addEventListener('click', e => {
+    if (e.target === e.currentTarget) e.currentTarget.style.display = 'none';
+});
+['opt-ltv-up','opt-ltv-down','opt-coll-up','opt-coll-down','opt-yield-up','opt-yield-down','opt-min-ltv','opt-runs']
+    .forEach(id => document.getElementById(id).addEventListener('change', countOptCombos));
+['opt-ltv-up','opt-ltv-down','opt-coll-up','opt-coll-down','opt-yield-up','opt-yield-down']
+    .forEach(id => document.getElementById(id).addEventListener('click', countOptCombos));
+document.getElementById('opt-run-btn').addEventListener('click', () => {
+    const flowVol  = document.getElementById('sel-flow-vol').value;
+    const yieldVol = document.getElementById('sel-yield-vol').value;
+    const shareVol = document.getElementById('sel-share-vol').value;
+    const hasRandom = hasRandomVol(flowVol) || hasRandomVol(yieldVol) || hasRandomVol(shareVol);
+    runOptimize({
+        ltvUp:     document.getElementById('opt-ltv-up').checked,
+        ltvDown:   document.getElementById('opt-ltv-down').checked,
+        collUp:    document.getElementById('opt-coll-up').checked,
+        collDown:  document.getElementById('opt-coll-down').checked,
+        yieldUp:   document.getElementById('opt-yield-up').checked,
+        yieldDown: document.getElementById('opt-yield-down').checked,
+        numRuns:   hasRandom ? (parseInt(document.getElementById('opt-runs').value) || 1) : 1,
+    });
+});
 
 function updateResetBtns() {
     document.getElementById('btn-reset-price-data').disabled = isAtDefaults(PRICE_DATA_SLIDERS, PRICE_DATA_SELECTS);

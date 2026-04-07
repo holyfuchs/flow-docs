@@ -303,6 +303,7 @@
         <div class="flex items-center justify-between px-4 py-2.5 cursor-pointer select-none" onclick="toggleSection('protocol-content',this)">
             <span class="text-[10px] text-[#333] uppercase tracking-[2px]">Protocol Settings</span>
             <div class="flex items-center gap-3">
+                <button class="btn-reset" id="btn-optimize" style="font-size:9px;padding:3px 10px;" onclick="event.stopPropagation()">&#9881; Optimize</button>
                 <button class="btn-reset" id="btn-reset-protocol" style="font-size:9px;padding:3px 10px;" onclick="event.stopPropagation()" disabled>&#8635; Reset</button>
                 <span class="chevron text-[#444] text-[10px]" style="transition:transform .2s;transform:rotate(-90deg)">▾</span>
             </div>
@@ -330,12 +331,6 @@
                         <span class="text-[10px] text-[#444] w-[28px]">%</span>
                     </div>
                 </div>
-                <div class="flex items-center gap-1.5">
-                    <span class="param-label w-[76px] flex-shrink-0">Interval</span>
-                    <input type="range" id="sl-interval-flow" min="1" max="120" step="1" value="10" class="flex-1" style="accent-color:#5cb85c;">
-                    <input type="number" class="num-input" id="num-interval-flow" step="1" value="10">
-                    <span class="text-[10px] text-[#444] w-[28px]">min</span>
-                </div>
             </div>
 
             <!-- ERC-4626: toggle + threshold -->
@@ -357,12 +352,6 @@
                         <input type="number" class="num-input" id="num-threshold-erc-down" step="1" value="5">
                         <span class="text-[10px] text-[#444] w-[28px]">%</span>
                     </div>
-                </div>
-                <div class="flex items-center gap-1.5">
-                    <span class="param-label w-[76px] flex-shrink-0">Interval</span>
-                    <input type="range" id="sl-interval-erc" min="1" max="120" step="1" value="10" class="flex-1" style="accent-color:#9a6ab8;">
-                    <input type="number" class="num-input" id="num-interval-erc" step="1" value="10">
-                    <span class="text-[10px] text-[#444] w-[28px]">min</span>
                 </div>
             </div>
 
@@ -497,5 +486,41 @@
             if (!e.relatedTarget?.closest('[data-tip]')) { clearTimeout(timer); tip.style.opacity = 0; }
         });
     </script>
+
+    <!-- Optimize dialog -->
+    <div id="optimize-dialog" style="display:none;position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.65);align-items:center;justify-content:center;">
+        <div style="background:#10101a;border:1px solid #1e1e30;padding:18px 20px;display:flex;flex-direction:column;gap:14px;min-width:260px;">
+            <span style="font-size:9px;text-transform:uppercase;letter-spacing:2px;color:#555;">Parameters to optimize</span>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px 16px;">
+                <label style="display:flex;align-items:center;gap:5px;font-size:10px;color:#666;cursor:pointer;"><input type="checkbox" id="opt-ltv-up"    checked> LTV ↑</label>
+                <label style="display:flex;align-items:center;gap:5px;font-size:10px;color:#666;cursor:pointer;"><input type="checkbox" id="opt-ltv-down"  checked> LTV ↓</label>
+                <label style="display:flex;align-items:center;gap:5px;font-size:10px;color:#666;cursor:pointer;"><input type="checkbox" id="opt-coll-up"   checked> Coll Thresh ↑</label>
+                <label style="display:flex;align-items:center;gap:5px;font-size:10px;color:#666;cursor:pointer;"><input type="checkbox" id="opt-coll-down" checked> Coll Thresh ↓</label>
+                <label style="display:flex;align-items:center;gap:5px;font-size:10px;color:#666;cursor:pointer;"><input type="checkbox" id="opt-yield-up"> Yield Thresh ↑</label>
+                <label style="display:flex;align-items:center;gap:5px;font-size:10px;color:#666;cursor:pointer;"><input type="checkbox" id="opt-yield-down"> Yield Thresh ↓</label>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;border-top:1px solid #1a1a28;padding-top:10px;">
+                <span style="font-size:9px;text-transform:uppercase;letter-spacing:2px;color:#555;">Min LTV</span>
+                <input type="number" id="opt-min-ltv" value="90" min="1" max="99" class="num-input" style="width:60px;">
+                <span style="font-size:9px;color:#333;">%</span>
+            </div>
+            <div id="opt-runs-row" style="display:none;flex-direction:column;gap:6px;border-top:1px solid #1a1a28;padding-top:10px;">
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <span style="font-size:9px;text-transform:uppercase;letter-spacing:2px;color:#555;">Runs</span>
+                    <input type="number" id="opt-runs" value="10" min="1" max="200" class="num-input" style="width:60px;">
+                </div>
+                <span id="opt-runs-hint" style="font-size:9px;color:#333;"></span>
+            </div>
+            <div style="font-size:9px;color:#444;" id="opt-combo-count"></div>
+            <div id="opt-progress-wrap" style="display:none;flex-direction:column;gap:5px;">
+                <div style="font-size:9px;color:#444;" id="opt-progress-label">Running...</div>
+                <div style="height:3px;background:#1a1a28;border-radius:2px;">
+                    <div id="opt-progress-bar" style="height:100%;width:0%;background:#5c9ab8;border-radius:2px;transition:width .1s;"></div>
+                </div>
+            </div>
+            <button id="opt-run-btn" class="btn-reset" style="font-size:9px;padding:5px 0;">&#9881; Run</button>
+        </div>
+    </div>
+
 </body>
 </html>
