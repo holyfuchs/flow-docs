@@ -54,7 +54,7 @@
 
             <!-- Collateral -->
             <div class="flex flex-col gap-1">
-                <span class="text-[9px] text-green uppercase tracking-[2px]"><span data-tip="The token you're long on — deposited into the lending market as collateral.">Collateral</span></span>
+                <span class="text-[9px] text-green uppercase tracking-[2px]"><span data-tip="The token you're long on — deposited into the lending market as collateral.">Collateral Token</span></span>
                 <div id="flow-vol-drift" class="flex items-center gap-1.5">
                     <span class="w-[76px] flex-shrink-0"><span class="param-label" data-tip="Yearly % drift of the collateral token's USD price.">Return/$</span></span>
                     <input type="range" id="sl-drift" min="-10" max="30" step="1" value="10" class="flex-1" style="accent-color:#5cb85c;">
@@ -118,11 +118,11 @@
 
             <!-- Yield Token -->
             <div class="flex flex-col gap-1 border-t border-mid pt-2">
-                <span class="text-[9px] text-steel uppercase tracking-[2px]"><span data-tip="The borrowed token from the lending market — effectively delta-neutral in the position.">Yield Token</span></span>
+                <span class="text-[9px] text-steel uppercase tracking-[2px]"><span data-tip="The borrowed token from the lending market — effectively delta-neutral in the position.">Debt Token</span></span>
                 <div id="yield-vol-drift" class="flex items-center gap-1.5">
                     <span class="w-[76px] flex-shrink-0"><span class="param-label" data-tip="Yearly % drift of the yield token's USD price.">Return/$</span></span>
-                    <input type="range" id="sl-yield-drift" min="-10" max="30" step="1" value="-10" class="flex-1" style="accent-color:#5c9ab8;">
-                    <input type="number" class="num-input" id="num-yield-drift" step="1" value="-10">
+                    <input type="range" id="sl-yield-drift" min="-10" max="30" step="1" value="0" class="flex-1" style="accent-color:#5c9ab8;">
+                    <input type="number" class="num-input" id="num-yield-drift" step="1" value="0">
                     <span class="text-[10px] text-[#444]">%</span>
                 </div>
                 <div class="flex items-center gap-1.5">
@@ -183,11 +183,11 @@
             <!-- ERC-4626 -->
             <div class="flex flex-col gap-1 border-t border-mid pt-2">
                 <div class="flex items-center gap-2">
-                    <span class="text-[9px] text-purple uppercase tracking-[2px]"><span data-tip="The yield strategy the borrowed token is deployed into — this is where yield accrues.">ERC-4626</span></span>
-                    <button class="btn-toggle btn-toggle-share active" id="btn-erc-per-yield" style="font-size:8px;padding:3px 8px;">price per yield token</button>
+                    <span class="text-[9px] text-purple uppercase tracking-[2px]"><span data-tip="The yield strategy the borrowed token is deployed into — this is where yield accrues.">Yield Token</span></span>
+                    <button class="btn-toggle btn-toggle-share active" id="btn-erc-per-yield" style="font-size:8px;padding:3px 8px;">price per Debt Token</button>
                 </div>
                 <div id="share-vol-drift" class="flex items-center gap-1.5">
-                    <span class="w-[76px] flex-shrink-0"><span class="param-label" data-tip="Yearly % return of the ERC-4626 vault share, denominated in yield tokens — not USD.">Return</span></span>
+                    <span class="w-[76px] flex-shrink-0"><span class="param-label" data-tip="Yearly % return of the Yield Token vault share, denominated in debt tokens — not USD.">Return</span></span>
                     <input type="range" id="sl-share-drift" min="-10" max="30" step="1" value="20" class="flex-1" style="accent-color:#9a6ab8;">
                     <input type="number" class="num-input" id="num-share-drift" step="1" value="20">
                     <span class="text-[10px] text-[#444]">%</span>
@@ -264,7 +264,7 @@
         <div class="flex gap-6 pt-2">
 
             <div class="flex flex-col gap-1 flex-1">
-                <span class="text-[9px] uppercase tracking-[2px]"><span class="text-green">Collateral</span> <span class="text-[#444]">⇄</span> <span class="text-purple">ERC4626</span></span>
+                <span class="text-[9px] uppercase tracking-[2px]"><span class="text-green">Collateral</span> <span class="text-[#444]">⇄</span> <span class="text-purple">Yield Token</span></span>
                 <div class="flex items-center gap-1.5">
                     <span class="w-[76px] flex-shrink-0"><span class="param-label" data-tip="Fee paid on DEX when rebalancing or opening a position.">DEX fee</span></span>
                     <input type="range" id="sl-collateral-swap-fee" min="0" max="100" step="1" value="15" class="flex-1" style="accent-color:#5cb85c;">
@@ -274,7 +274,7 @@
             </div>
 
             <div class="flex flex-col gap-1 flex-1">
-                <span class="text-[9px] uppercase tracking-[2px]"><span class="text-steel">Yield Token</span> <span class="text-[#444]">⇄</span> <span class="text-purple">ERC4626</span></span>
+                <span class="text-[9px] uppercase tracking-[2px]"><span class="text-steel">Debt Token</span> <span class="text-[#444]">⇄</span> <span class="text-purple">Yield Token</span></span>
                 <div class="flex items-center gap-1.5">
                     <span class="w-[76px] flex-shrink-0"><span class="param-label" data-tip="Fee paid on DEX when rebalancing or opening a position.">DEX fee</span></span>
                     <input type="range" id="sl-erc-swap-fee" min="0" max="100" step="1" value="15" class="flex-1" style="accent-color:#5c9ab8;">
@@ -284,9 +284,9 @@
             </div>
 
             <div class="flex flex-col gap-1 flex-1">
-                <span class="text-[9px] text-steel uppercase tracking-[2px]">Yield Token</span>
+                <span class="text-[9px] text-steel uppercase tracking-[2px]">Debt Token</span>
                 <div class="flex items-center gap-1.5">
-                    <span class="w-[76px] flex-shrink-0"><span class="param-label" data-tip="Annual interest on the borrowed yield tokens. Grows the debt balance over time.">Borrow fee</span></span>
+                    <span class="w-[76px] flex-shrink-0"><span class="param-label" data-tip="Annual interest on the borrowed debt tokens. Grows the debt balance over time.">Borrow fee</span></span>
                     <input type="range" id="sl-borrow-fee" min="0" max="10" step="1" value="3" class="flex-1" style="accent-color:#5c9ab8;">
                     <input type="number" class="num-input" id="num-borrow-fee" step="1" value="3">
                     <span class="text-[10px] text-[#444] w-[28px]">%</span>
@@ -341,7 +341,7 @@
             <!-- ERC-4626: toggle + threshold -->
             <div class="flex flex-col gap-1.5 flex-1">
                 <div class="flex items-center gap-2">
-                    <span class="text-[9px] text-purple uppercase tracking-[2px]">ERC-4626</span>
+                    <span class="text-[9px] text-purple uppercase tracking-[2px]">Yield Token</span>
                     <button class="btn-toggle btn-toggle-share active" id="btn-share-rebalance">Rebalancer</button>
                 </div>
                 <div class="flex flex-col gap-1" id="erc-rebalance-thresh">
@@ -366,17 +366,17 @@
                 </div>
             </div>
 
-            <!-- Yield Token -->
+            <!-- Debt Token -->
             <div class="flex flex-col gap-1.5 flex-1">
-                <span class="text-[9px] text-steel uppercase tracking-[2px]">Yield Token</span>
+                <span class="text-[9px] text-steel uppercase tracking-[2px]">Debt Token</span>
                 <div class="flex items-center gap-1.5">
-                    <span class="w-[76px] flex-shrink-0"><span class="param-label" data-tip="Target LTV when rebalancing up — collateral price rose, loan is too small.">Health ↑</span></span>
+                    <span class="w-[76px] flex-shrink-0"><span class="param-label" data-tip="Target LTV when rebalancing up — collateral price rose, loan is too small.">LTV ↑</span></span>
                     <input type="range" id="sl-ltv-up" min="0.5" max="0.95" step="0.05" value="0.8" class="flex-1" style="accent-color:#5c9ab8;">
                     <input type="number" class="num-input" id="num-ltv-up" step="5" value="80">
                     <span class="text-[10px] text-[#444] w-[28px]">%</span>
                 </div>
                 <div class="flex items-center gap-1.5">
-                    <span class="w-[76px] flex-shrink-0"><span class="param-label" data-tip="Target LTV when rebalancing down — collateral price fell, loan is too large.">Health ↓</span></span>
+                    <span class="w-[76px] flex-shrink-0"><span class="param-label" data-tip="Target LTV when rebalancing down — collateral price fell, loan is too large.">LTV ↓</span></span>
                     <input type="range" id="sl-ltv-down" min="0.5" max="0.95" step="0.05" value="0.8" class="flex-1" style="accent-color:#5c9ab8;">
                     <input type="number" class="num-input" id="num-ltv-down" step="5" value="80">
                     <span class="text-[10px] text-[#444] w-[28px]">%</span>
@@ -395,14 +395,14 @@
                 <button class="btn-play" id="btn-play" style="font-size:9px;padding:3px 12px;min-width:60px;">&#9654; Play</button>
                 <div class="flex items-center gap-1.5">
                     <span class="text-[9px] text-[#333] uppercase tracking-[1px]">Duration</span>
-                    <input type="range" id="sl-duration" min="1" max="3650" step="1" value="30" class="w-[80px]" style="accent-color:#5c9ab8;">
-                    <input type="number" class="num-input" id="num-duration" step="1" value="30">
+                    <input type="range" id="sl-duration" min="1" max="3650" step="1" value="365" class="w-[80px]" style="accent-color:#5c9ab8;">
+                    <input type="number" class="num-input" id="num-duration" step="1" value="365">
                     <span class="text-[10px] text-[#444]">d</span>
                 </div>
             </div>
             <div class="flex-1"></div>
             <div class="flex items-baseline gap-2">
-                <span id="position-val" class="text-base text-blue tracking-normal normal-case">$0.00</span>
+                <span id="position-val" class="text-base text-blue tracking-normal normal-case">0.00 Collateral Token</span>
                 <span id="pos-current-pct" class="text-xs text-[#555] tracking-normal normal-case cursor-help" data-tip="Current return vs. position start."></span>
                 <span class="text-xs text-[#2a2a2a] tracking-normal normal-case">→</span>
                 <span id="pos-total-pct" class="text-xs text-[#444] tracking-normal normal-case cursor-help" data-tip="Total return by end of duration."></span>
@@ -417,8 +417,8 @@
     <div class="w-full max-w-[1400px] flex items-stretch">
         <div class="flex flex-col gap-2 pb-12">
             <div class="h-14 flex items-center pr-4 text-[10px] text-[#444] uppercase tracking-[2px] whitespace-nowrap"><span data-tip="The token you're long on — deposited into the lending market as collateral.">Collateral<br>Token</span></div>
-            <div class="h-14 flex items-center pr-4 text-[10px] text-[#444] uppercase tracking-[2px] whitespace-nowrap"><span data-tip="The borrowed token from the lending market — effectively delta-neutral in the position.">Yield<br>Token</span></div>
-            <div class="h-14 flex items-center pr-4 text-[10px] text-[#444] uppercase tracking-[2px] whitespace-nowrap"><span data-tip="The yield strategy the borrowed token is deployed into — this is where yield accrues.">ERC-4626</span></div>
+            <div class="h-14 flex items-center pr-4 text-[10px] text-[#444] uppercase tracking-[2px] whitespace-nowrap"><span data-tip="The borrowed token from the lending market — effectively delta-neutral in the position.">Debt<br>Token</span></div>
+            <div class="h-14 flex items-center pr-4 text-[10px] text-[#444] uppercase tracking-[2px] whitespace-nowrap"><span data-tip="The yield strategy the borrowed token is deployed into — this is where yield accrues.">Yield<br>Token</span></div>
         </div>
         <div class="flex-1 relative">
             <div id="gridlines" class="absolute top-0 left-0 right-0 bottom-12 pointer-events-none z-[5]">

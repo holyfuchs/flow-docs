@@ -5,7 +5,7 @@ sequenceDiagram
     participant Alice
     participant YV as Yield Vaults
     participant ALP as ALP
-    participant ERC as ERC4626
+    participant ERC as Yield Token
 
     destroy Alice
     Alice->>YV: 100 FLOW
@@ -23,7 +23,7 @@ sequenceDiagram
     autonumber
     participant YV as Yield Vaults
     participant ALP as ALP
-    participant ERC as ERC4626
+    participant ERC as Yield Token
     participant SW as SWAP (DEX)
 
     YV->>ERC: 7.3 Shares
@@ -39,7 +39,7 @@ sequenceDiagram
 sequenceDiagram
     participant YV as Yield Vaults
     participant ALP as ALP
-    participant ERC as ERC4626
+    participant ERC as Yield Token
     participant SW as SWAP (DEX)
 
     SW->>ALP: 8 FLOW

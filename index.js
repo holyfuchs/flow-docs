@@ -16,7 +16,7 @@ const numVal         = id => parseFloat(document.getElementById(id).value);
 const isActive      = id => document.getElementById(id).classList.contains('active');
 
 // ── Bar chart ─────────────────────────────────────────────────────────
-let CHART_MAX = 200;
+let CHART_MAX = 1;
 function barPct(dollars) { return Math.min(dollars / CHART_MAX * 100, 100) + '%'; }
 
 // ── Simulation state ──────────────────────────────────────────────────
@@ -37,15 +37,15 @@ function gatherSettings() {
         ltvDown:                    numVal('num-ltv-down') / 100,
         collateralThresholdUp:      numVal('num-threshold-flow-up')   / 100,
         collateralThresholdDown:    numVal('num-threshold-flow-down') / 100,
-        ercThresholdUp:             numVal('num-threshold-erc-up')    / 100,
-        ercThresholdDown:           numVal('num-threshold-erc-down')  / 100,
+        yieldTokenThresholdUp:      numVal('num-threshold-erc-up')    / 100,
+        yieldTokenThresholdDown:    numVal('num-threshold-erc-down')  / 100,
         collateralSwapFee:          numVal('num-collateral-swap-fee') / 100,
-        ercSwapFee:                 numVal('num-erc-swap-fee') / 100,
+        yieldTokenSwapFee:          numVal('num-erc-swap-fee') / 100,
         borrowFeeAnnual:            numVal('num-borrow-fee') / 100,
         collateralRebalanceEnabled: isActive('btn-flow-rebalance'),
-        ercRebalanceEnabled:        isActive('btn-share-rebalance'),
+        yieldTokenRebalanceEnabled: isActive('btn-share-rebalance'),
         collateralIntervalMinutes:  numVal('num-interval-flow'),
-        ercIntervalMinutes:         numVal('num-interval-erc'),
+        yieldTokenIntervalMinutes:  numVal('num-interval-erc'),
     };
 }
 
@@ -171,7 +171,7 @@ function generatePriceArrays() {
     }, N_POINTS, dt, parseInt(document.getElementById('sl-flow-seed').value) || 1);
 
     const yieldVol = document.getElementById('sel-yield-vol').value;
-    const yieldArr = genSeries(numVal('num-yield-drift') / 100, yieldVol, {
+    const debtToken = genSeries(numVal('num-yield-drift') / 100, yieldVol, {
         period: numVal('num-yield-period') / 365.25,
         ampl:   numVal('num-yield-velocity') / 100,
         sigma:  numVal('num-yield-sigma') / 100,
@@ -181,7 +181,7 @@ function generatePriceArrays() {
     }, N_POINTS, dt, parseInt(document.getElementById('sl-yield-seed').value) || 1);
 
     const shareVol = document.getElementById('sel-share-vol').value;
-    const share = genSeries(numVal('num-share-drift') / 100, shareVol, {
+    const yieldToken = genSeries(numVal('num-share-drift') / 100, shareVol, {
         period: numVal('num-share-period') / 365.25,
         ampl:   numVal('num-share-velocity') / 100,
         sigma:  numVal('num-share-sigma') / 100,
@@ -190,14 +190,14 @@ function generatePriceArrays() {
         historyOffset: numVal('num-share-history-offset'),
     }, N_POINTS, dt, parseInt(document.getElementById('sl-share-seed').value) || 1);
 
-    return { collateral, yield: yieldArr, share, times };
+    return { collateral, debtToken, yieldToken, times };
 }
 
 // ── Recompute everything ──────────────────────────────────────────────
 function recompute() {
     priceArrays = generatePriceArrays();
     const settings = gatherSettings();
-    simResult   = runSimulation(priceArrays.collateral, priceArrays.yield, priceArrays.share, settings);
+    simResult   = runSimulation(priceArrays.collateral, priceArrays.debtToken, priceArrays.yieldToken, settings);
     // Force position chart to reload full dataset
     positionChart.data.datasets[0].data = [];
     updatePriceChart();
@@ -208,12 +208,12 @@ function recompute() {
 function updateThresholdLines() {
     if (!simResult) return;
     const i       = Math.min(Math.floor(playIdx), N_POINTS - 1);
-    const yp      = priceArrays.yield[i];
+    const dtp     = priceArrays.debtToken[i];
     const ltvUp   = numVal('num-ltv-up')   / 100;
     const ltvDown = numVal('num-ltv-down') / 100;
     const threshUp   = numVal('num-threshold-flow-up')   / 100;
     const threshDown = numVal('num-threshold-flow-down') / 100;
-    const debtUsd = simResult.yieldTokenValues[i];
+    const debtUsd = simResult.debtTokenValues[i];
     const upper   = (debtUsd * (1 + threshUp))   / ltvUp;
     const lower   = (debtUsd * (1 - threshDown)) / ltvDown;
 
@@ -225,12 +225,12 @@ function updateThresholdLines() {
     document.getElementById('threshold-label-lower').textContent = usdInt(lower);
 }
 
-function updateERC4626ThresholdLines() {
+function updateYieldTokenThresholdLines() {
     if (!simResult) return;
     const i       = Math.min(Math.floor(playIdx), N_POINTS - 1);
     const threshUp   = numVal('num-threshold-erc-up')   / 100;
     const threshDown = numVal('num-threshold-erc-down') / 100;
-    const debtUsd = simResult.yieldTokenValues[i];
+    const debtUsd = simResult.debtTokenValues[i];
     const cvUsd   = simResult.collateralValues[i];
     const barStart = Math.max(cvUsd - debtUsd, 0);
     const upper    = (barStart + debtUsd * (1 + threshUp))   / CHART_MAX * 100;
@@ -248,7 +248,7 @@ function updateERC4626ThresholdLines() {
 const TICK_STYLE = {
     color: '#333',
     font: { family: 'SF Mono, Fira Code, monospace', size: 10 },
-    callback: v => '$' + v.toFixed(2),
+    callback: v => v.toFixed(2),
     maxTicksLimit: 5,
 };
 
@@ -257,8 +257,8 @@ const priceChart = new Chart(document.getElementById('price-chart'), {
     data: {
         datasets: [
             { label: 'Collateral', data: [], yAxisID: 'y', borderColor: '#5cb85c', borderWidth: 1.5, backgroundColor: 'rgba(92,184,92,0.06)',    fill: true, pointRadius: 0, tension: 0.3 },
-            { label: 'ERC-4626',   data: [], yAxisID: 'y', borderColor: '#9a6ab8', borderWidth: 1.5, backgroundColor: 'rgba(154,106,184,0.06)', fill: true, pointRadius: 0, tension: 0.3 },
-            { label: 'Yield',      data: [], yAxisID: 'y', borderColor: '#5c7db8', borderWidth: 1.5, backgroundColor: 'rgba(92,125,184,0.06)',  fill: true, pointRadius: 0, tension: 0.3 }
+            { label: 'Yield Token', data: [], yAxisID: 'y', borderColor: '#9a6ab8', borderWidth: 1.5, backgroundColor: 'rgba(154,106,184,0.06)', fill: true, pointRadius: 0, tension: 0.3 },
+            { label: 'Debt',        data: [], yAxisID: 'y', borderColor: '#5c7db8', borderWidth: 1.5, backgroundColor: 'rgba(92,125,184,0.06)',  fill: true, pointRadius: 0, tension: 0.3 }
         ]
     },
     options: {
@@ -273,7 +273,12 @@ const priceChart = new Chart(document.getElementById('price-chart'), {
                 bodyFont:  { family: 'SF Mono, Fira Code, monospace', size: 11 },
                 callbacks: {
                     title: items => items[0].parsed.x.toFixed(2) + 'y',
-                    label: item  => ' ' + item.dataset.label + ': $' + item.parsed.y.toFixed(3),
+                    label: item  => {
+                        const isYieldToken = item.datasetIndex === 1;
+                        const perDebt = document.getElementById('btn-erc-per-yield').textContent.trim() === 'price per Debt Token';
+                        const unit = (isYieldToken && perDebt) ? '' : '$';
+                        return ' ' + item.dataset.label + ': ' + unit + item.parsed.y.toFixed(3);
+                    },
                 },
             },
         },
@@ -287,11 +292,11 @@ const priceChart = new Chart(document.getElementById('price-chart'), {
 
 function updatePriceChart() {
     if (!priceArrays) return;
-    const { collateral, yield: yieldArr, share, times } = priceArrays;
+    const { collateral, debtToken, yieldToken, times } = priceArrays;
     priceChart.data.datasets[0].data = times.map((t, i) => ({ x: t, y: collateral[i] }));
-    const ercPerYield = document.getElementById('btn-erc-per-yield').classList.contains('active');
-    priceChart.data.datasets[1].data = times.map((t, i) => ({ x: t, y: ercPerYield ? share[i] : share[i] * yieldArr[i] }));
-    priceChart.data.datasets[2].data = times.map((t, i) => ({ x: t, y: yieldArr[i] }));
+    const ercPerYield = document.getElementById('btn-erc-per-yield').textContent.trim() === 'price per Debt Token';
+    priceChart.data.datasets[1].data = times.map((t, i) => ({ x: t, y: ercPerYield ? yieldToken[i] : yieldToken[i] * debtToken[i] }));
+    priceChart.data.datasets[2].data = times.map((t, i) => ({ x: t, y: debtToken[i] }));
     priceChart.options.scales.x.max  = durationYears();
     priceChart.options.scales.y.min  = undefined;
     priceChart.options.scales.y.max  = undefined;
@@ -343,7 +348,7 @@ const positionChartPlugin = {
         ctx.setLineDash([3, 5]);
         for (const [times, color] of [
             [simResult.collateralRebalanceTimes, 'rgba(92,184,92,0.5)'],
-            [simResult.ercRebalanceTimes,        'rgba(154,106,184,0.5)'],
+            [simResult.yieldTokenRebalanceTimes, 'rgba(154,106,184,0.5)'],
         ]) {
             ctx.strokeStyle = color;
             for (const t of times) {
@@ -372,7 +377,7 @@ const positionChart = new Chart(document.getElementById('position-chart'), {
             x: { type: 'linear', min: 0, max: 1, grid: { color: 'rgba(255,255,255,0.03)' },
                  ticks: { color: '#333', font: { family: 'SF Mono, Fira Code, monospace', size: 10 }, callback: fmtTime, maxTicksLimit: 6 } },
             y: { position: 'right', grid: { color: 'rgba(255,255,255,0.04)' },
-                 ticks: { color: '#333', font: { family: 'SF Mono, Fira Code, monospace', size: 10 }, callback: v => '$' + v.toFixed(0), maxTicksLimit: 5 } },
+                 ticks: { color: '#333', font: { family: 'SF Mono, Fira Code, monospace', size: 10 }, callback: v => v.toFixed(2) + ' CT', maxTicksLimit: 5 } },
         }
     }
 });
@@ -411,15 +416,15 @@ function renderFrame(i) {
     i = Math.min(i, N_POINTS - 1);
 
     const cvUsd      = simResult.collateralValues[i];
-    const debtUsd    = simResult.yieldTokenValues[i];
-    const sharesUsd  = simResult.erc4626Values[i];
+    const debtUsd    = simResult.debtTokenValues[i];
+    const sharesUsd  = simResult.yieldTokenValues[i];
     const posUsd     = simResult.positionValues[i];
     const t          = priceArrays.times[i];
 
     // Bar chart auto-scale
     let chartMaxChanged = false;
     while (cvUsd >= CHART_MAX) { CHART_MAX *= 2; chartMaxChanged = true; }
-    while (cvUsd < CHART_MAX * 0.25 && CHART_MAX > 200) { CHART_MAX /= 2; chartMaxChanged = true; }
+    while (cvUsd < CHART_MAX * 0.25 && CHART_MAX > 1) { CHART_MAX /= 2; chartMaxChanged = true; }
     if (chartMaxChanged) rebuildGridlines();
 
     const yieldLeft = barPct(Math.max(cvUsd - debtUsd, 0));
@@ -427,30 +432,30 @@ function renderFrame(i) {
     document.getElementById('flow-bar-text').textContent   = `${(cvUsd / priceArrays.collateral[i]).toFixed(2)} Collateral Token\n${usdS(cvUsd)}`;
     document.getElementById('pyusd-bar').style.left        = yieldLeft;
     document.getElementById('pyusd-bar').style.width       = barPct(debtUsd);
-    document.getElementById('pyusd-bar-text').textContent  = `${(debtUsd / priceArrays.yield[i]).toFixed(2)} Yield Token\n${usdS(debtUsd)}`;
+    document.getElementById('pyusd-bar-text').textContent  = `${(debtUsd / priceArrays.debtToken[i]).toFixed(2)} Debt Token\n${(debtUsd / priceArrays.collateral[i]).toFixed(2)} Collateral Token\n${usdS(debtUsd)}`;
     document.getElementById('shares-bar').style.left       = yieldLeft;
     document.getElementById('shares-bar').style.width      = barPct(sharesUsd);
-    document.getElementById('shares-bar-text').textContent = `${(sharesUsd / (priceArrays.share[i] * priceArrays.yield[i])).toFixed(2)} shares\n${(sharesUsd / priceArrays.yield[i]).toFixed(2)} yield token\n${usdS(sharesUsd)}`;
+    document.getElementById('shares-bar-text').textContent = `${(sharesUsd / (priceArrays.yieldToken[i] * priceArrays.debtToken[i])).toFixed(2)} Yield Token\n${(sharesUsd / priceArrays.debtToken[i]).toFixed(2)} Debt Token\n${usdS(sharesUsd)}`;
 
-    // Position value display
-    document.getElementById('position-val').textContent = usd(posUsd);
+    // Position value display (in collateral tokens)
+    const posCollateral = posUsd / priceArrays.collateral[i];
+    document.getElementById('position-val').textContent = posCollateral.toFixed(2) + ' Collateral Token';
 
-    const fmt = (pct, el) => {
+    const fmtPct = (pct, el) => {
         el.textContent = (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%';
         el.style.color = pct >= 0 ? '#5cb85c' : '#d9534f';
     };
 
-    const currentReturn = (posUsd / simResult.positionValues[0] - 1) * 100;
-    fmt(currentReturn, document.getElementById('pos-current-pct'));
+    const initialCt = simResult.positionValues[0]            / priceArrays.collateral[0];
+    const finalCt   = simResult.positionValues[N_POINTS - 1] / priceArrays.collateral[N_POINTS - 1];
+    fmtPct((posCollateral / initialCt - 1) * 100, document.getElementById('pos-current-pct'));
+    fmtPct((finalCt       / initialCt - 1) * 100, document.getElementById('pos-total-pct'));
 
-    const finalReturn = (simResult.positionValues[N_POINTS - 1] / simResult.positionValues[0] - 1) * 100;
-    fmt(finalReturn, document.getElementById('pos-total-pct'));
 
 
     // Position chart: show full precomputed trace, cursor draws the current position
     if (positionChart.data.datasets[0].data.length !== N_POINTS) {
-        const allY  = simResult.positionValues;
-        positionChart.data.datasets[0].data = simResult.positionValues.map((v, j) => ({ x: priceArrays.times[j], y: v }));
+        positionChart.data.datasets[0].data = simResult.positionValues.map((v, j) => ({ x: priceArrays.times[j], y: v / priceArrays.collateral[j] }));
         positionChart.options.scales.y.min  = undefined;
         positionChart.options.scales.y.max  = undefined;
         positionChart.options.scales.x.max  = durationYears();
@@ -459,7 +464,7 @@ function renderFrame(i) {
     priceChart.update('none');
 
     updateThresholdLines();
-    updateERC4626ThresholdLines();
+    updateYieldTokenThresholdLines();
 }
 
 // ── Play loop ─────────────────────────────────────────────────────────
@@ -500,7 +505,7 @@ function resetSimulation() {
     if (rafId) cancelAnimationFrame(rafId);
     document.getElementById('btn-play').textContent = '\u25B6 Play';
 
-    CHART_MAX = 200;
+    CHART_MAX = 1;
     rebuildGridlines();
     recompute();
 }
@@ -682,7 +687,12 @@ function applyVolSelect(prefix, selId) {
     applyVolSelect(prefix, selId);
 });
 
-setupToggle('btn-erc-per-yield', () => { updatePriceChart(); });
+document.getElementById('btn-erc-per-yield').addEventListener('click', () => {
+    const btn = document.getElementById('btn-erc-per-yield');
+    const isPerDebt = btn.textContent.trim() === 'price per Debt Token';
+    btn.textContent = isPerDebt ? 'price per $' : 'price per Debt Token';
+    updatePriceChart();
+});
 
 setupToggle('btn-flow-rebalance', active => {
     document.getElementById('flow-rebalance-thresh').classList.toggle('dimmed', !active);
