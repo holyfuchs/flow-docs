@@ -1,0 +1,5 @@
+# Rust/Cargo build artifacts
+wasm/target/
+
+# OS
+.DS_Store

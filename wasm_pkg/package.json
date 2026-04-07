@@ -1,0 +1,15 @@
+{
+  "name": "rebalancer-sim",
+  "type": "module",
+  "version": "0.1.0",
+  "files": [
+    "rebalancer_sim_bg.wasm",
+    "rebalancer_sim.js",
+    "rebalancer_sim.d.ts"
+  ],
+  "main": "rebalancer_sim.js",
+  "types": "rebalancer_sim.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

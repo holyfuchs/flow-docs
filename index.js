@@ -1,4 +1,4 @@
-import { runSimulation } from './simulation.js';
+import init, { run_simulation as wasmRunSim, sim_single } from './wasm_pkg/rebalancer_sim.js';
 import { FLOW_PRICES }     from './price_data/flow_prices.js';
 import { ETHEREUM_PRICES } from './price_data/ethereum_prices.js';
 import { BITCOIN_PRICES }  from './price_data/bitcoin_prices.js';
@@ -20,6 +20,39 @@ const HISTORY_DATA = {
     'history-matic':    MATIC_PRICES,
     'history-mkr':      MAKER_PRICES,
 };
+
+// ── WASM init ─────────────────────────────────────────────────────────
+let wasmReady = false;
+init({ module_or_path: './wasm_pkg/rebalancer_sim_bg.wasm' })
+    .then(() => { wasmReady = true; recompute(); })
+    .catch(e => console.error('[wasm] init failed:', e));
+
+// ── Worker pool helpers ───────────────────────────────────────────────
+const N_WORKERS = navigator.hardwareConcurrency || 4;
+let _workerPool = null;
+
+function getWorkerPool() {
+    if (!_workerPool) {
+        _workerPool = Array.from({ length: N_WORKERS }, () =>
+            new Worker(new URL('./wasm_worker.js', import.meta.url), { type: 'module' })
+        );
+    }
+    return _workerPool;
+}
+
+// Send a message to a worker and wait for its reply (matched by id).
+function workerRpc(worker, msg, transfer = []) {
+    return new Promise(resolve => {
+        const id = Math.random();
+        const handler = ({ data }) => {
+            if (data.id !== id) return;
+            worker.removeEventListener('message', handler);
+            resolve(data);
+        };
+        worker.addEventListener('message', handler);
+        worker.postMessage({ ...msg, id }, transfer);
+    });
+}
 
 // ── Formatters ────────────────────────────────────────────────────────
 function usd(n)   { return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
@@ -81,13 +114,6 @@ function rngRandn(rng) {
     return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
 }
 
-function rngPoisson(rng, lambda) {
-    if (lambda <= 0) return 0;
-    let L = Math.exp(-lambda), k = 0, p = 1;
-    do { k++; p *= rng(); } while (p > L);
-    return k - 1;
-}
-
 // ── Generate price series for one asset ──────────────────────────────
 // GBM and Jump use a Brownian Bridge so the path always ends at EXACTLY (1+μ)^T.
 // B(t) = W(t) - (t/T)·W(T) pins both endpoints to 0, then trend multiplies on top.
@@ -136,34 +162,6 @@ function genSeries(drift, volType, params, N, dt, seed) {
             out[i] = Math.max(Math.pow(1 + mu, t) * Math.exp(sigma * B), 0.001);
         }
 
-    } else if (volType === 'jump') {
-        // Generate Poisson jumps first, record cumulative log-return from jumps.
-        // Adjust continuous drift so total log-return = log((1+μ)^T) exactly.
-        // Then layer a Brownian Bridge on top for the diffusion component.
-        const rng         = makeRng(seed);
-        const sigma       = params.sigma;
-        const lambda      = params.lambda;
-        const jumpLogRet  = Math.log(1 + params.jumpSize);
-        const sqDt        = Math.sqrt(dt);
-
-        const cumJump = new Array(N).fill(0);
-        let totalJumpLogRet = 0;
-        for (let i = 1; i < N; i++) {
-            const nJumps = rngPoisson(rng, lambda / (N - 1));
-            totalJumpLogRet += nJumps * jumpLogRet;
-            cumJump[i] = totalJumpLogRet;
-        }
-
-        const targetLogRet       = T * Math.log(1 + mu);
-        const contLogDriftPerYr  = (targetLogRet - totalJumpLogRet) / T;
-
-        const W = new Array(N).fill(0);
-        for (let i = 1; i < N; i++) W[i] = W[i - 1] + sqDt * rngRandn(rng);
-        for (let i = 0; i < N; i++) {
-            const t = i * dt;
-            const B = W[i] - (t / T) * W[N - 1];
-            out[i] = Math.max(Math.exp(contLogDriftPerYr * t + sigma * B + cumJump[i]), 0.001);
-        }
     }
     return out;
 }
@@ -180,8 +178,6 @@ function generatePriceArrays() {
         period: numVal('num-period') / 365.25,
         ampl:   numVal('num-velocity') / 100,
         sigma:  numVal('num-flow-sigma') / 100,
-        lambda: numVal('num-flow-lambda'),
-        jumpSize: numVal('num-flow-jump') / 100,
         historyOffset: numVal('num-flow-history-offset'),
     }, N_POINTS, dt, parseInt(document.getElementById('sl-flow-seed').value) || 1);
 
@@ -190,8 +186,6 @@ function generatePriceArrays() {
         period: numVal('num-yield-period') / 365.25,
         ampl:   numVal('num-yield-velocity') / 100,
         sigma:  numVal('num-yield-sigma') / 100,
-        lambda: numVal('num-yield-lambda'),
-        jumpSize: numVal('num-yield-jump') / 100,
         historyOffset: numVal('num-yield-history-offset'),
     }, N_POINTS, dt, parseInt(document.getElementById('sl-yield-seed').value) || 1);
 
@@ -200,8 +194,6 @@ function generatePriceArrays() {
         period: numVal('num-share-period') / 365.25,
         ampl:   numVal('num-share-velocity') / 100,
         sigma:  numVal('num-share-sigma') / 100,
-        lambda: numVal('num-share-lambda'),
-        jumpSize: numVal('num-share-jump') / 100,
         historyOffset: numVal('num-share-history-offset'),
     }, N_POINTS, dt, parseInt(document.getElementById('sl-share-seed').value) || 1);
 
@@ -210,9 +202,37 @@ function generatePriceArrays() {
 
 // ── Recompute everything ──────────────────────────────────────────────
 function recompute() {
+    if (!wasmReady) return;
     priceArrays = generatePriceArrays();
     const settings = gatherSettings();
-    simResult   = runSimulation(priceArrays.collateral, priceArrays.debtToken, priceArrays.yieldToken, settings);
+    const coll = new Float64Array(priceArrays.collateral);
+    const dbt  = new Float64Array(priceArrays.debtToken);
+    const yld  = new Float64Array(priceArrays.yieldToken);
+    const n    = coll.length;
+    const flat = wasmRunSim(
+        coll, dbt, yld,
+        settings.ltvUp, settings.ltvDown,
+        settings.collateralThresholdUp, settings.collateralThresholdDown,
+        settings.yieldTokenThresholdUp, settings.yieldTokenThresholdDown,
+        settings.borrowFeeAnnual, settings.collateralSwapFee, settings.yieldTokenSwapFee,
+        settings.durationYears,
+        settings.collateralRebalanceEnabled,
+        settings.yieldTokenRebalanceEnabled,
+    );
+    const dur = settings.durationYears;
+    function flagsToTimes(flags) {
+        const times = [];
+        for (let i = 0; i < n; i++) { if (flags[i] === 1.0) times.push(i / (n - 1) * dur); }
+        return times;
+    }
+    simResult = {
+        collateralValues:         Array.from(flat.subarray(0,   n)),
+        debtTokenValues:          Array.from(flat.subarray(n,   2*n)),
+        yieldTokenValues:         Array.from(flat.subarray(2*n, 3*n)),
+        positionValues:           Array.from(flat.subarray(3*n, 4*n)),
+        collateralRebalanceTimes: flagsToTimes(flat.subarray(4*n, 5*n)),
+        yieldTokenRebalanceTimes: flagsToTimes(flat.subarray(5*n, 6*n)),
+    };
     // Force position chart to reload full dataset
     positionChart.data.datasets[0].data = [];
     updatePriceChart();
@@ -223,7 +243,6 @@ function recompute() {
 function updateThresholdLines() {
     if (!simResult) return;
     const i       = Math.min(Math.floor(playIdx), N_POINTS - 1);
-    const dtp     = priceArrays.debtToken[i];
     const ltvUp   = numVal('num-ltv-up')   / 100;
     const ltvDown = numVal('num-ltv-down') / 100;
     const threshUp   = numVal('num-threshold-flow-up')   / 100;
@@ -434,7 +453,6 @@ function renderFrame(i) {
     const debtUsd    = simResult.debtTokenValues[i];
     const sharesUsd  = simResult.yieldTokenValues[i];
     const posUsd     = simResult.positionValues[i];
-    const t          = priceArrays.times[i];
 
     // Bar chart auto-scale
     let chartMaxChanged = false;
@@ -513,17 +531,6 @@ document.getElementById('btn-play').addEventListener('click', () => {
     }
 });
 
-function resetSimulation() {
-    playing = false;
-    playIdx = 0;
-    lastTs  = null;
-    if (rafId) cancelAnimationFrame(rafId);
-    document.getElementById('btn-play').textContent = '\u25B6 Play';
-
-    CHART_MAX = 1;
-    rebuildGridlines();
-    recompute();
-}
 
 // ── Bar chart gridlines ───────────────────────────────────────────────
 const gridContainer = document.getElementById('gridlines');
@@ -634,14 +641,8 @@ syncPriceControl('sl-yield-history-offset', 'num-yield-history-offset', v => Mat
 syncPriceControl('sl-share-history-offset', 'num-share-history-offset', v => Math.round(v));
 syncPriceControl('sl-borrow-fee',      'num-borrow-fee',      v => Math.round(v));
 syncPriceControl('sl-flow-sigma',      'num-flow-sigma',      v => Math.round(v));
-syncPriceControl('sl-flow-lambda',     'num-flow-lambda',     v => Math.round(v));
-syncPriceControl('sl-flow-jump',       'num-flow-jump',       v => Math.round(v));
 syncPriceControl('sl-yield-sigma',     'num-yield-sigma',     v => Math.round(v));
-syncPriceControl('sl-yield-lambda',    'num-yield-lambda',    v => Math.round(v));
-syncPriceControl('sl-yield-jump',      'num-yield-jump',      v => Math.round(v));
 syncPriceControl('sl-share-sigma',     'num-share-sigma',     v => Math.round(v));
-syncPriceControl('sl-share-lambda',    'num-share-lambda',    v => Math.round(v));
-syncPriceControl('sl-share-jump',      'num-share-jump',      v => Math.round(v));
 syncPriceControl('sl-drift',           'num-drift',           v => Math.round(v));
 syncPriceControl('sl-period',          'num-period',          v => +v.toFixed(1));
 syncPriceControl('sl-velocity',        'num-velocity',        v => Math.round(v));
@@ -665,10 +666,8 @@ function applyVolSelect(prefix, selId) {
     const v = document.getElementById(selId).value;
     document.getElementById(prefix + '-vol-period').classList.toggle('hidden',    v !== 'sine');
     document.getElementById(prefix + '-vol-amplitude').classList.toggle('hidden', v !== 'sine');
-    document.getElementById(prefix + '-vol-sigma').classList.toggle('hidden',     v !== 'gbm' && v !== 'jump');
-    document.getElementById(prefix + '-vol-lambda').classList.toggle('hidden',    v !== 'jump');
-    document.getElementById(prefix + '-vol-jump').classList.toggle('hidden',      v !== 'jump');
-    document.getElementById(prefix + '-vol-seed').classList.toggle('hidden',      v !== 'gbm' && v !== 'jump');
+    document.getElementById(prefix + '-vol-sigma').classList.toggle('hidden',     v !== 'gbm');
+    document.getElementById(prefix + '-vol-seed').classList.toggle('hidden',      v !== 'gbm');
     document.getElementById(prefix + '-vol-history').classList.toggle('hidden',   !(v in HISTORY_DATA));
     document.getElementById(prefix + '-vol-drift').classList.toggle('dimmed',     v in HISTORY_DATA);
 }
@@ -715,9 +714,9 @@ window.__resizePriceChart = () => {
 const SHARE_SLIDERS = ['sl-duration','sl-drift','sl-threshold-flow-up','sl-threshold-flow-down','sl-collateral-swap-fee','sl-period','sl-velocity',
                        'sl-yield-drift','sl-borrow-fee','sl-ltv-up','sl-ltv-down','sl-yield-period','sl-yield-velocity',
                        'sl-share-drift','sl-threshold-erc-up','sl-threshold-erc-down','sl-erc-swap-fee','sl-share-period','sl-share-velocity',
-                       'sl-flow-sigma','sl-flow-lambda','sl-flow-jump',
-                       'sl-yield-sigma','sl-yield-lambda','sl-yield-jump',
-                       'sl-share-sigma','sl-share-lambda','sl-share-jump',
+                       'sl-flow-sigma',
+                       'sl-yield-sigma',
+                       'sl-share-sigma',
                        'sl-flow-seed','sl-yield-seed','sl-share-seed',
                        'sl-flow-history-offset','sl-yield-history-offset','sl-share-history-offset'];
 const SHARE_TOGGLES = ['btn-flow-rebalance','btn-share-rebalance'];
@@ -761,44 +760,52 @@ function isAtDefaults(sliderIds, selectIds = [], toggleIds = []) {
 }
 
 // ── Protocol optimizer ────────────────────────────────────────────────
-function hasRandomVol(volType) {
-    return volType === 'gbm' || volType === 'jump' || volType === 'history-flow' || volType === 'history-eth';
-}
 function isHistoryVol(volType) {
-    return volType === 'history-flow' || volType === 'history-eth';
+    return volType.startsWith('history-');
+}
+function hasRandomVol(volType) {
+    return volType === 'gbm' || isHistoryVol(volType);
 }
 
-function generatePriceArraysForRun(runIdx) {
+function generatePriceArraysForRun(runIdx, numRuns) {
     const dur    = durationYears();
     const dt     = dur / (N_POINTS - 1);
     const times  = Array.from({ length: N_POINTS }, (_, i) => i * dt);
-    const stride = Math.round(dur * 365.25);
+    const daysNeeded = Math.max(2, Math.round(dur * 365.25));
 
     const flowVol  = document.getElementById('sel-flow-vol').value;
     const yieldVol = document.getElementById('sel-yield-vol').value;
     const shareVol = document.getElementById('sel-share-vol').value;
 
+    // For history vols, pick a deterministic but pseudo-random window within
+    // the available data so all runs use distinct, valid slices.
+    function historyOffset(vol) {
+        const prices = HISTORY_DATA[vol];
+        const maxOffset = Math.max(0, prices.length - daysNeeded);
+        if (maxOffset === 0) return 0;
+        // Stratified: divide range into numRuns equal buckets
+        const offset = Math.round(runIdx / numRuns * maxOffset);
+        return offset;
+    }
+
     function seedFor(vol, base)   { return hasRandomVol(vol) && !isHistoryVol(vol) ? base + runIdx : base; }
-    function offsetFor(vol, base) { return isHistoryVol(vol) ? base + runIdx * stride : base; }
+    function offsetFor(vol, base) { return isHistoryVol(vol) ? historyOffset(vol) : base; }
 
     const collateral = genSeries(numVal('num-drift') / 100, flowVol, {
         period: numVal('num-period') / 365.25, ampl: numVal('num-velocity') / 100,
-        sigma: numVal('num-flow-sigma') / 100, lambda: numVal('num-flow-lambda'),
-        jumpSize: numVal('num-flow-jump') / 100,
+        sigma: numVal('num-flow-sigma') / 100,
         historyOffset: offsetFor(flowVol, numVal('num-flow-history-offset')),
     }, N_POINTS, dt, seedFor(flowVol, parseInt(document.getElementById('sl-flow-seed').value) || 1));
 
     const debtToken = genSeries(numVal('num-yield-drift') / 100, yieldVol, {
         period: numVal('num-yield-period') / 365.25, ampl: numVal('num-yield-velocity') / 100,
-        sigma: numVal('num-yield-sigma') / 100, lambda: numVal('num-yield-lambda'),
-        jumpSize: numVal('num-yield-jump') / 100,
+        sigma: numVal('num-yield-sigma') / 100,
         historyOffset: offsetFor(yieldVol, numVal('num-yield-history-offset')),
     }, N_POINTS, dt, seedFor(yieldVol, parseInt(document.getElementById('sl-yield-seed').value) || 1));
 
     const yieldToken = genSeries(numVal('num-share-drift') / 100, shareVol, {
         period: numVal('num-share-period') / 365.25, ampl: numVal('num-share-velocity') / 100,
-        sigma: numVal('num-share-sigma') / 100, lambda: numVal('num-share-lambda'),
-        jumpSize: numVal('num-share-jump') / 100,
+        sigma: numVal('num-share-sigma') / 100,
         historyOffset: offsetFor(shareVol, numVal('num-share-history-offset')),
     }, N_POINTS, dt, seedFor(shareVol, parseInt(document.getElementById('sl-share-seed').value) || 1));
 
@@ -821,50 +828,23 @@ async function runOptimize(opts) {
         const { borrowFeeAnnual, collateralSwapFee, yieldTokenSwapFee } = base;
         const numRuns = opts.numRuns;
 
-        function simOnArrays(coll, debt, yield_, lU, lD, ctU, ctD, ytU, ytD) {
-            const n = coll.length;
-            const dtYears = base.durationYears / (n - 1);
-            let ca = 100, debtLoan = ca * coll[0] * ((lU + lD) / 2);
-            let shares = debtLoan * (1 - yieldTokenSwapFee) / yield_[0];
-            for (let i = 0; i < n; i++) {
-                const cp = coll[i], dtp = debt[i], ytp = yield_[i];
-                if (i > 0) debtLoan *= (1 + borrowFeeAnnual * dtYears);
-                const cv = ca * cp;
-                const tU = cv * lU / dtp, tD = cv * lD / dtp;
-                const dU = (tU - debtLoan) / debtLoan, dD = (tD - debtLoan) / debtLoan;
-                if (dU >= ctU || dD <= -ctD) {
-                    const diff = (dU >= ctU ? tU : tD) - debtLoan;
-                    debtLoan += diff;
-                    shares += diff > 0 ? diff * (1 - yieldTokenSwapFee) / ytp : diff / ((1 - yieldTokenSwapFee) * ytp);
-                }
-                const held = shares * ytp, dev = (held - debtLoan) / debtLoan;
-                if (dev >= ytU) {
-                    ca += (held - debtLoan) * dtp * (1 - collateralSwapFee) / cp; shares = debtLoan / ytp;
-                } else if (dev <= -ytD) {
-                    ca -= (debtLoan - held) * dtp * (1 + collateralSwapFee) / cp; shares = debtLoan / ytp;
-                }
-            }
-            const last = n - 1;
-            const cp = coll[last], dtp = debt[last], ytp = yield_[last];
-            const debtFromYield = shares * ytp * (1 - yieldTokenSwapFee);
-            const netDebt = debtFromYield - debtLoan;
-            return netDebt >= 0
-                ? ca + netDebt * dtp * (1 - collateralSwapFee) / cp
-                : ca + netDebt * dtp * (1 + collateralSwapFee) / cp;
+        // Build flat combo buffer once (6 f64 per combo)
+        function buildComboBuffer(combos) {
+            const buf = new Float64Array(combos.length * 6);
+            combos.forEach((c, i) => {
+                buf[i*6]   = c.lU;  buf[i*6+1] = c.lD;
+                buf[i*6+2] = c.ctU; buf[i*6+3] = c.ctD;
+                buf[i*6+4] = c.ytU; buf[i*6+5] = c.ytD;
+            });
+            return buf;
         }
 
-        const T  = [0.01, 0.03, 0.05, 0.08, 0.12, 0.18, 0.20, 0.30, 0.40, 0.50, 1.00, 10.00];
-        const YT = [0.01, 0.05, 0.10, 0.20];
-        const L  = [...[0.20, 0.25, 0.30, 0.35, 0.40, 0.45], ...Array.from({ length: 46 }, (_, i) => (50 + i) / 100)];  // 0.20 – 0.95
         const shareVolFlat  = document.getElementById('sel-share-vol').value === 'none';
         const sharePositive = numVal('num-share-drift') >= 0;
 
-        const lUVals  = opts.ltvUp     ? L  : [base.ltvUp];
-        const lDVals  = opts.ltvDown   ? L  : [base.ltvDown];
-        const ctUVals = opts.collUp    ? T  : [base.collateralThresholdUp];
-        const ctDVals = opts.collDown  ? T  : [base.collateralThresholdDown];
-        const ytUVals = !opts.yieldUp  ? [base.yieldTokenThresholdUp]  : (shareVolFlat && !sharePositive) ? [0.20] : YT;
-        const ytDVals = !opts.yieldDown? [base.yieldTokenThresholdDown] : (shareVolFlat &&  sharePositive) ? [0.20] : YT;
+        const { lUVals, lDVals, ctUVals, ctDVals, ytUVals, ytDVals } = getOptGrids(
+            base, opts.ltvLevel, opts.collLevel, opts.yldLevel, shareVolFlat, sharePositive
+        );
 
         const minLtv = (parseInt(document.getElementById('opt-min-ltv').value) || 90) / 100;
 
@@ -878,32 +858,64 @@ async function runOptimize(opts) {
             combos.push({ lU, lD, ctU, ctD, ytU, ytD });
         }
 
-        const totals = new Float64Array(combos.length);
+        // Split combos across workers — each worker owns its slice for the whole run
+        const workers   = getWorkerPool();
+        const nW        = workers.length;
+        const comboBuf  = buildComboBuffer(combos);
+        const chunkSize = Math.ceil(combos.length / nW);
 
+        // Init each worker with its combo chunk (copied once)
+        await Promise.all(workers.map((w, i) => {
+            const start = i * chunkSize;
+            const end   = Math.min(start + chunkSize, combos.length);
+            if (start >= combos.length) return Promise.resolve();
+            const chunk = comboBuf.slice(start * 6, end * 6);  // copy for transfer
+            return workerRpc(w, {
+                type: 'init', combos: chunk.buffer,
+                borrowFee: borrowFeeAnnual, collFee: collateralSwapFee,
+                ytFee: yieldTokenSwapFee, duration: base.durationYears,
+            }, [chunk.buffer]);
+        }));
+
+        // Run each price path — all workers in parallel per path, cache arrays for default score
+        const cachedPaths = [];
         for (let r = 0; r < numRuns; r++) {
-            const { collateral, debtToken, yieldToken } = generatePriceArraysForRun(r);
-            combos.forEach((c, i) => {
-                totals[i] += simOnArrays(collateral, debtToken, yieldToken, c.lU, c.lD, c.ctU, c.ctD, c.ytU, c.ytD);
-            });
+            const arrays = generatePriceArraysForRun(r, numRuns);
+            cachedPaths.push(arrays);
+            const coll = new Float64Array(arrays.collateral).buffer;
+            const dbt  = new Float64Array(arrays.debtToken).buffer;
+            const yld  = new Float64Array(arrays.yieldToken).buffer;
+            await Promise.all(workers.map(w =>
+                workerRpc(w, { type: 'run_path', coll, debt: dbt, yield_: yld })
+            ));
             progressBar.style.width  = ((r + 1) / numRuns * 100).toFixed(1) + '%';
             progressLabel.textContent = `Path ${r + 1} / ${numRuns}`;
             await new Promise(res => setTimeout(res, 0));
         }
 
+        // Collect partial totals from each worker and merge
+        const totals = new Float64Array(combos.length);
+        await Promise.all(workers.map(async (w, i) => {
+            const start = i * chunkSize;
+            if (start >= combos.length) return;
+            const { totals: buf } = await workerRpc(w, { type: 'get_totals' });
+            const partial = new Float64Array(buf);
+            for (let j = 0; j < partial.length; j++) totals[start + j] = partial[j];
+        }));
+
         const allResults = combos.map((c, i) => ({ ...c, score: totals[i] / numRuns }));
         allResults.sort((a, b) => b.score - a.score);
         const best = allResults[0];
 
-        // Compute default settings score averaged over same price paths
-        // Always uses hardcoded defaults (HTML initial values), not current selection
         const DEFAULT = { ltvUp: 0.80, ltvDown: 0.80, ctUp: 0.05, ctDown: 0.05, ytUp: 0.05, ytDown: 0.05 };
         let defaultTotal = 0;
         for (let r = 0; r < numRuns; r++) {
-            const { collateral, debtToken, yieldToken } = generatePriceArraysForRun(r);
-            defaultTotal += simOnArrays(collateral, debtToken, yieldToken,
-                DEFAULT.ltvUp, DEFAULT.ltvDown,
-                DEFAULT.ctUp, DEFAULT.ctDown,
-                DEFAULT.ytUp, DEFAULT.ytDown);
+            const { collateral, debtToken, yieldToken } = cachedPaths[r];
+            defaultTotal += sim_single(
+                new Float64Array(collateral), new Float64Array(debtToken), new Float64Array(yieldToken),
+                DEFAULT.ltvUp, DEFAULT.ltvDown, DEFAULT.ctUp, DEFAULT.ctDown, DEFAULT.ytUp, DEFAULT.ytDown,
+                borrowFeeAnnual, collateralSwapFee, yieldTokenSwapFee, base.durationYears
+            );
         }
         const defaultScore = defaultTotal / numRuns;
 
@@ -945,35 +957,82 @@ async function runOptimize(opts) {
     }
 }
 
+// ── Opt level helpers ──────────────────────────────────────────────────
+function getOptLevel(group) {
+    const btn = document.querySelector(`.opt-level-group[data-opt-group="${group}"] .opt-lvl-active`);
+    return btn ? btn.dataset.level : 'off';
+}
+
+const OPT_L_HIGH = [
+    ...Array.from({ length: 9  }, (_, i) =>  i * 5 / 100),
+    ...Array.from({ length: 60 }, (_, i) => (41 + i) / 100),
+];
+const OPT_L_MED  = Array.from({ length: 16 }, (_, i) => (20 + i * 5) / 100);
+const OPT_L_LOW  = [0.50, 0.60, 0.70, 0.80, 0.90];
+
+const OPT_T_HIGH = [
+    ...Array.from({ length: 20 }, (_, i) => (i + 1) / 100),
+    ...Array.from({ length: 16 }, (_, i) => (25 + i * 5) / 100),
+];
+const OPT_T_MED  = [0.01, 0.03, 0.05, 0.10, 0.15,0.20, 0.50, 1.00];
+const OPT_T_LOW  = [0.01, 0.05, 0.20, 1.00];
+
+const OPT_YT_HIGH = [
+    ...Array.from({ length: 20 }, (_, i) => (i + 1) / 100),
+    ...Array.from({ length: 16 }, (_, i) => (25 + i * 5) / 100),
+];
+const OPT_YT_MED  = [0.01, 0.03, 0.05, 0.10, 0.15,0.20, 0.50, 1.00];
+const OPT_YT_LOW  = [0.01, 0.05, 0.20, 1.00];
+
+function getOptGrids(base, ltvLevel, collLevel, yldLevel, shareVolFlat, sharePositive) {
+    const lGrid = ltvLevel === 'high' ? OPT_L_HIGH : ltvLevel === 'med' ? OPT_L_MED : ltvLevel === 'low' ? OPT_L_LOW : null;
+    const tGrid = collLevel === 'high' ? OPT_T_HIGH : collLevel === 'med' ? OPT_T_MED : collLevel === 'low' ? OPT_T_LOW : null;
+
+    let ytGrid = null;
+    if (yldLevel !== 'off') {
+        const raw = yldLevel === 'high' ? OPT_YT_HIGH : yldLevel === 'med' ? OPT_YT_MED : OPT_YT_LOW;
+        ytGrid = raw;
+    }
+
+    return {
+        lUVals:  lGrid  ?? [base.ltvUp],
+        lDVals:  lGrid  ?? [base.ltvDown],
+        ctUVals: tGrid  ?? [base.collateralThresholdUp],
+        ctDVals: tGrid  ?? [base.collateralThresholdDown],
+        ytUVals: ytGrid ? (shareVolFlat && !sharePositive ? [0.20] : ytGrid) : [base.yieldTokenThresholdUp],
+        ytDVals: ytGrid ? (shareVolFlat &&  sharePositive ? [0.20] : ytGrid) : [base.yieldTokenThresholdDown],
+    };
+}
+
 // ── Combo counter ─────────────────────────────────────────────────────
 function countOptCombos() {
-    const T  = [0.01, 0.03, 0.05, 0.08, 0.12, 0.18];
-    const YT = [0.01, 0.05, 0.10, 0.20];
-    const L  = Array.from({ length: 46 }, (_, i) => (50 + i) / 100);
-    const base    = gatherSettings();
-    const minLtv  = (parseInt(document.getElementById('opt-min-ltv').value) || 90) / 100;
-    const shareVolFlat  = document.getElementById('sel-share-vol').value === 'none';
+    const base         = gatherSettings();
+    const minLtv       = (parseInt(document.getElementById('opt-min-ltv').value) || 90) / 100;
+    const shareVolFlat = document.getElementById('sel-share-vol').value === 'none';
     const sharePositive = numVal('num-share-drift') >= 0;
-    const ltvUp    = document.getElementById('opt-ltv-up').checked;
-    const ltvDown  = document.getElementById('opt-ltv-down').checked;
-    const collUp   = document.getElementById('opt-coll-up').checked;
-    const collDown = document.getElementById('opt-coll-down').checked;
-    const yieldUp  = document.getElementById('opt-yield-up').checked;
-    const yieldDown= document.getElementById('opt-yield-down').checked;
-    const lUVals  = ltvUp    ? L  : [base.ltvUp];
-    const lDVals  = ltvDown  ? L  : [base.ltvDown];
-    const ctUVals = collUp   ? T  : [base.collateralThresholdUp];
-    const ctDVals = collDown ? T  : [base.collateralThresholdDown];
-    const ytUVals = !yieldUp  ? [base.yieldTokenThresholdUp]  : (shareVolFlat && !sharePositive) ? [0.20] : YT;
-    const ytDVals = !yieldDown? [base.yieldTokenThresholdDown] : (shareVolFlat &&  sharePositive) ? [0.20] : YT;
-    let count = 0;
-    for (const lU of lUVals) for (const lD of lDVals)
-    for (const ctU of ctUVals) for (const ctD of ctDVals)
-    for (const ytU of ytUVals) for (const ytD of ytDVals) {
-        if (lD <= lU) continue;
-        if (lD + ctD > minLtv) continue;
-        count++;
+
+    const { lUVals, lDVals, ctUVals, ctDVals, ytUVals, ytDVals } = getOptGrids(
+        base, getOptLevel('ltv'), getOptLevel('coll'), getOptLevel('yld'), shareVolFlat, sharePositive
+    );
+
+    // Math-based count: avoid 6-nested loops
+    // Valid triples: lD > lU and lD + ctD <= minLtv
+    // For each (lD, ctD) pair, count lU values < lD
+    const lUSorted = [...lUVals].sort((a, b) => a - b);
+    let validTriples = 0;
+    for (const lD of lDVals) {
+        // binary search: count lU < lD
+        let lo = 0, hi = lUSorted.length;
+        while (lo < hi) { const mid = (lo + hi) >> 1; lUSorted[mid] < lD ? lo = mid + 1 : hi = mid; }
+        const nLU = lo;
+        if (nLU === 0) continue;
+        for (const ctD of ctDVals) {
+            if (lD + ctD > minLtv) continue;
+            validTriples += nLU;
+        }
     }
+    const count = validTriples * ctUVals.length * ytUVals.length * ytDVals.length;
+
     const runs = parseInt(document.getElementById('opt-runs').value) || 1;
     const flowVol  = document.getElementById('sel-flow-vol').value;
     const yieldVol = document.getElementById('sel-yield-vol').value;
@@ -983,6 +1042,36 @@ function countOptCombos() {
     document.getElementById('opt-combo-count').textContent =
         `${count.toLocaleString()} combos × ${paths} path${paths > 1 ? 's' : ''} = ${(count * paths).toLocaleString()} simulations`;
 }
+
+// Build opt-level buttons
+(function() {
+    const DEFAULTS = { ltv: 'high', coll: 'med', yld: 'off' };
+    document.querySelectorAll('.opt-level-group').forEach(group => {
+        const grp = group.dataset.optGroup;
+        ['off','low','med','high'].forEach(level => {
+            const btn = document.createElement('button');
+            btn.textContent = level;
+            btn.dataset.level = level;
+            btn.style.cssText = 'font-size:9px;padding:2px 7px;border:1px solid #333;background:transparent;color:#555;cursor:pointer;border-radius:2px;';
+            if (level === DEFAULTS[grp]) {
+                btn.style.borderColor = '#5c9ab8';
+                btn.style.color = '#5c9ab8';
+                btn.classList.add('opt-lvl-active');
+            }
+            btn.addEventListener('click', () => {
+                group.querySelectorAll('button').forEach(b => {
+                    b.style.borderColor = '#333'; b.style.color = '#555';
+                    b.classList.remove('opt-lvl-active');
+                });
+                btn.style.borderColor = '#5c9ab8';
+                btn.style.color = '#5c9ab8';
+                btn.classList.add('opt-lvl-active');
+                countOptCombos();
+            });
+            group.appendChild(btn);
+        });
+    });
+})();
 
 // Dialog open/close
 document.getElementById('btn-optimize').addEventListener('click', e => {
@@ -1004,22 +1093,17 @@ document.getElementById('btn-optimize').addEventListener('click', e => {
 document.getElementById('optimize-dialog').addEventListener('click', e => {
     if (e.target === e.currentTarget) e.currentTarget.style.display = 'none';
 });
-['opt-ltv-up','opt-ltv-down','opt-coll-up','opt-coll-down','opt-yield-up','opt-yield-down','opt-min-ltv','opt-runs']
+['opt-min-ltv','opt-runs']
     .forEach(id => document.getElementById(id).addEventListener('change', countOptCombos));
-['opt-ltv-up','opt-ltv-down','opt-coll-up','opt-coll-down','opt-yield-up','opt-yield-down']
-    .forEach(id => document.getElementById(id).addEventListener('click', countOptCombos));
 document.getElementById('opt-run-btn').addEventListener('click', () => {
     const flowVol  = document.getElementById('sel-flow-vol').value;
     const yieldVol = document.getElementById('sel-yield-vol').value;
     const shareVol = document.getElementById('sel-share-vol').value;
     const hasRandom = hasRandomVol(flowVol) || hasRandomVol(yieldVol) || hasRandomVol(shareVol);
     runOptimize({
-        ltvUp:     document.getElementById('opt-ltv-up').checked,
-        ltvDown:   document.getElementById('opt-ltv-down').checked,
-        collUp:    document.getElementById('opt-coll-up').checked,
-        collDown:  document.getElementById('opt-coll-down').checked,
-        yieldUp:   document.getElementById('opt-yield-up').checked,
-        yieldDown: document.getElementById('opt-yield-down').checked,
+        ltvLevel:  getOptLevel('ltv'),
+        collLevel: getOptLevel('coll'),
+        yldLevel:  getOptLevel('yld'),
         numRuns:   hasRandom ? (parseInt(document.getElementById('opt-runs').value) || 1) : 1,
     });
 });

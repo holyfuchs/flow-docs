@@ -67,7 +67,6 @@
                         <option value="none" selected>None</option>
                         <option value="sine">Sine</option>
                         <option value="gbm">GBM</option>
-                        <option value="jump">Jump Diff.</option>
                         <option value="history-flow">Flow History</option>
                         <option value="history-eth">Ethereum History</option>
                         <option value="history-btc">Bitcoin History</option>
@@ -103,18 +102,6 @@
                     <input type="number" class="num-input" id="num-flow-sigma" step="1" value="100">
                     <span class="text-[10px] text-[#444]">%</span>
                 </div>
-                <div id="flow-vol-lambda" class="hidden flex items-center gap-1.5">
-                    <span class="param-label w-[76px] flex-shrink-0">Jumps</span>
-                    <input type="range" id="sl-flow-lambda" min="0" max="50" step="1" value="4" class="flex-1" style="accent-color:#5cb85c;">
-                    <input type="number" class="num-input" id="num-flow-lambda" step="1" value="4">
-                    <span class="text-[10px] invisible select-none">%</span>
-                </div>
-                <div id="flow-vol-jump" class="hidden flex items-center gap-1.5">
-                    <span class="param-label w-[76px] flex-shrink-0">Jump size</span>
-                    <input type="range" id="sl-flow-jump" min="-50" max="50" step="1" value="-10" class="flex-1" style="accent-color:#5cb85c;">
-                    <input type="number" class="num-input" id="num-flow-jump" step="1" value="-10">
-                    <span class="text-[10px] text-[#444]">%</span>
-                </div>
                 <div id="flow-vol-seed" class="hidden flex items-center gap-1.5">
                     <span class="param-label w-[76px] flex-shrink-0">Seed</span>
                     <input type="range" id="sl-flow-seed" min="1" max="99" step="1" value="1" class="flex-1" style="accent-color:#5cb85c;">
@@ -138,7 +125,6 @@
                         <option value="none" selected>None</option>
                         <option value="sine">Sine</option>
                         <option value="gbm">GBM</option>
-                        <option value="jump">Jump Diff.</option>
                         <option value="history-flow">Flow History</option>
                         <option value="history-eth">Ethereum History</option>
                         <option value="history-btc">Bitcoin History</option>
@@ -174,18 +160,6 @@
                     <input type="number" class="num-input" id="num-yield-sigma" step="1" value="100">
                     <span class="text-[10px] text-[#444]">%</span>
                 </div>
-                <div id="yield-vol-lambda" class="hidden flex items-center gap-1.5">
-                    <span class="param-label w-[76px] flex-shrink-0">Jumps</span>
-                    <input type="range" id="sl-yield-lambda" min="0" max="50" step="1" value="4" class="flex-1" style="accent-color:#5c9ab8;">
-                    <input type="number" class="num-input" id="num-yield-lambda" step="1" value="4">
-                    <span class="text-[10px] invisible select-none">%</span>
-                </div>
-                <div id="yield-vol-jump" class="hidden flex items-center gap-1.5">
-                    <span class="param-label w-[76px] flex-shrink-0">Jump size</span>
-                    <input type="range" id="sl-yield-jump" min="-50" max="50" step="1" value="-10" class="flex-1" style="accent-color:#5c9ab8;">
-                    <input type="number" class="num-input" id="num-yield-jump" step="1" value="-10">
-                    <span class="text-[10px] text-[#444]">%</span>
-                </div>
                 <div id="yield-vol-seed" class="hidden flex items-center gap-1.5">
                     <span class="param-label w-[76px] flex-shrink-0">Seed</span>
                     <input type="range" id="sl-yield-seed" min="1" max="99" step="1" value="2" class="flex-1" style="accent-color:#5c9ab8;">
@@ -212,7 +186,6 @@
                         <option value="none">None</option>
                         <option value="sine">Sine</option>
                         <option value="gbm">GBM</option>
-                        <option value="jump">Jump Diff.</option>
                         <option value="history-flow">Flow History</option>
                         <option value="history-eth">Ethereum History</option>
                         <option value="history-btc">Bitcoin History</option>
@@ -246,18 +219,6 @@
                     <span class="param-label w-[76px] flex-shrink-0">σ vol/yr</span>
                     <input type="range" id="sl-share-sigma" min="1" max="100" step="1" value="2" class="flex-1" style="accent-color:#9a6ab8;">
                     <input type="number" class="num-input" id="num-share-sigma" step="1" value="2">
-                    <span class="text-[10px] text-[#444]">%</span>
-                </div>
-                <div id="share-vol-lambda" class="hidden flex items-center gap-1.5">
-                    <span class="param-label w-[76px] flex-shrink-0">Jumps</span>
-                    <input type="range" id="sl-share-lambda" min="0" max="50" step="1" value="4" class="flex-1" style="accent-color:#9a6ab8;">
-                    <input type="number" class="num-input" id="num-share-lambda" step="1" value="4">
-                    <span class="text-[10px] invisible select-none">%</span>
-                </div>
-                <div id="share-vol-jump" class="hidden flex items-center gap-1.5">
-                    <span class="param-label w-[76px] flex-shrink-0">Jump size</span>
-                    <input type="range" id="sl-share-jump" min="-50" max="50" step="1" value="-10" class="flex-1" style="accent-color:#9a6ab8;">
-                    <input type="number" class="num-input" id="num-share-jump" step="1" value="-10">
                     <span class="text-[10px] text-[#444]">%</span>
                 </div>
                 <div id="share-vol-seed" class="hidden flex items-center gap-1.5">
@@ -512,13 +473,19 @@
     <div id="optimize-dialog" style="display:none;position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.65);align-items:center;justify-content:center;">
         <div style="background:#10101a;border:1px solid #1e1e30;padding:18px 20px;display:flex;flex-direction:column;gap:14px;min-width:260px;">
             <span style="font-size:9px;text-transform:uppercase;letter-spacing:2px;color:#555;">Parameters to optimize</span>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px 16px;">
-                <label style="display:flex;align-items:center;gap:5px;font-size:10px;color:#666;cursor:pointer;"><input type="checkbox" id="opt-ltv-up"    checked> LTV ↑</label>
-                <label style="display:flex;align-items:center;gap:5px;font-size:10px;color:#666;cursor:pointer;"><input type="checkbox" id="opt-ltv-down"  checked> LTV ↓</label>
-                <label style="display:flex;align-items:center;gap:5px;font-size:10px;color:#666;cursor:pointer;"><input type="checkbox" id="opt-coll-up"   checked> Coll Thresh ↑</label>
-                <label style="display:flex;align-items:center;gap:5px;font-size:10px;color:#666;cursor:pointer;"><input type="checkbox" id="opt-coll-down" checked> Coll Thresh ↓</label>
-                <label style="display:flex;align-items:center;gap:5px;font-size:10px;color:#666;cursor:pointer;"><input type="checkbox" id="opt-yield-up"> Yield Thresh ↑</label>
-                <label style="display:flex;align-items:center;gap:5px;font-size:10px;color:#666;cursor:pointer;"><input type="checkbox" id="opt-yield-down"> Yield Thresh ↓</label>
+            <div style="display:flex;flex-direction:column;gap:6px;">
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <span style="font-size:9px;color:#555;min-width:74px;">LTV</span>
+                    <div class="opt-level-group" data-opt-group="ltv" style="display:flex;gap:3px;"></div>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <span style="font-size:9px;color:#555;min-width:74px;">Coll Thresh</span>
+                    <div class="opt-level-group" data-opt-group="coll" style="display:flex;gap:3px;"></div>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <span style="font-size:9px;color:#555;min-width:74px;">Yield Thresh</span>
+                    <div class="opt-level-group" data-opt-group="yld" style="display:flex;gap:3px;"></div>
+                </div>
             </div>
             <div style="display:flex;align-items:center;gap:8px;border-top:1px solid #1a1a28;padding-top:10px;">
                 <span style="font-size:9px;text-transform:uppercase;letter-spacing:2px;color:#555;">Min LTV</span>
